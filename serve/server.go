@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -45,18 +46,44 @@ func (server *Server) GetCategories(rw http.ResponseWriter, req *http.Request, _
 	}
 }
 
+// GetCatView handles a GET request for information on a single category.
+func (server *Server) GetCatView(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
+	ctx, cancel := context.WithTimeout(req.Context(), time.Second*10)
+	defer cancel()
+	view, err := server.store.GetCatView(ctx, params.ByName("cat"))
+	if err != nil {
+		if errors.Is(err, data.ErrNotFound) {
+			rw.WriteHeader(http.StatusNotFound)
+			fmt.Fprintln(rw, err.Error())
+			return
+		}
+		rw.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(rw, "Internal server error")
+		return
+	}
+
+	rw.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(rw).Encode(view)
+	if err != nil {
+		log.Printf("failed to encode JSON response: %s", err)
+	}
+}
+
 // NewServer stub todo
 func NewServer(store *data.Store, address string) *Server {
 
 	server := &Server{
 		store: store,
 		httpServer: http.Server{
-			Addr: address,
+			Addr:              address,
+			IdleTimeout:       time.Minute * 10,
+			ReadHeaderTimeout: time.Second * 10,
 		},
 	}
 
 	router := httprouter.New()
-	router.GET("/:cat", server.GetCategories)
+	router.GET("/v1", server.GetCategories)
+	router.GET("/v1/:cat", server.GetCatView)
 
 	server.httpServer.Handler = router
 	return server

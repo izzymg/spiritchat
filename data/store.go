@@ -26,8 +26,8 @@ var InvalidContentLen = fmt.Sprintf(
 	maxContentLen,
 )
 
-// ErrInvalidCategory describes a human readable error for an invalid category.
-var ErrInvalidCategory = errors.New("That category does not exist")
+// ErrNotFound is a generic user-friendly not found message.
+var ErrNotFound = errors.New("That category or post does not exist")
 
 // Category contains JSON information describing a Category for posts.
 type Category struct {
@@ -129,7 +129,9 @@ func (store *Store) GetThread(ctx context.Context, threadUID string) ([]Post, er
 	return posts, nil
 }
 
-// GetCategory returns a single category.
+/*
+GetCategory returns a single category. May return ErrNotFound if the given category
+name is invalid. */
 func (store *Store) GetCategory(ctx context.Context, catName string) (*Category, error) {
 	rows, err := store.connection.Query(
 		ctx,
@@ -142,11 +144,16 @@ func (store *Store) GetCategory(ctx context.Context, catName string) (*Category,
 	defer rows.Close()
 
 	var cat Category
-	rows.Scan(&cat.Name)
-	return &cat, nil
+	if rows.Next() {
+		rows.Scan(&cat.Name)
+		return &cat, nil
+	}
+	return nil, ErrNotFound
 }
 
-// GetCatView returns information about a category, and all the threads on it.
+/*
+GetCatView returns information about a category, and all the threads on it.
+May return an ErrNotFound if the given category name is invalid. */
 func (store *Store) GetCatView(ctx context.Context, catName string) (*CatView, error) {
 	cat, err := store.GetCategory(ctx, catName)
 	if err != nil {
@@ -172,7 +179,6 @@ func (store *Store) GetCatView(ctx context.Context, catName string) (*CatView, e
 		}
 		posts = append(posts, p)
 	}
-
 	return &CatView{
 		Threads:  posts,
 		Category: *cat,
@@ -206,7 +212,7 @@ func (store *Store) GetPosts(ctx context.Context, cat string) ([]Post, error) {
 }
 
 // Trans creates a new data store transaction, for write operations to the store.
-func (store *Store) trans(ctx context.Context) (*Trans, error) {
+func (store *Store) Trans(ctx context.Context) (*Trans, error) {
 	tx, err := store.connection.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start db transaction: %w", err)
@@ -241,7 +247,7 @@ func (t *Trans) WritePost(ctx context.Context, p *Post) error {
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == fkViolation {
-			return ErrInvalidCategory
+			return ErrNotFound
 		}
 		return fmt.Errorf("failed to execute post write: %w", err)
 	}

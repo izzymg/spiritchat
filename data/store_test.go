@@ -19,7 +19,7 @@ func TestInvalidPostCategory(t *testing.T) {
 	}
 	defer store.Cleanup(ctx)
 
-	tr, err := store.trans(ctx)
+	tr, err := store.Trans(ctx)
 	if err != nil {
 		t.Fatal(fmt.Errorf("failed to begin transaction: %w", err))
 	}
@@ -29,7 +29,7 @@ func TestInvalidPostCategory(t *testing.T) {
 		UID:     generateUniqueID(),
 	})
 	if err != nil {
-		if !errors.Is(err, ErrInvalidCategory) {
+		if !errors.Is(err, ErrNotFound) {
 			t.Fatal(fmt.Errorf("failed to write post: %w", err))
 		}
 		t.Log(err)
