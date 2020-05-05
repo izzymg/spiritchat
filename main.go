@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"time"
 
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
@@ -36,11 +37,18 @@ type category struct {
 
 // Post contains JSON information describing a thread, or reply to a thread.
 type post struct {
-	UID     string
-	Num     int
-	Cat     string
-	Parent  string
-	Content string
+	UID       string    `json:"-"`
+	Num       int       `json:"num"`
+	Cat       string    `json:"cat"`
+	Parent    string    `json:"parent"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// CatView contains JSON information about a category, and all the threads on it.
+type catview struct {
+	category
+	Threads []post `json:"threads"`
 }
 
 /*
@@ -96,6 +104,80 @@ func (store *datastore) getCatagories(ctx context.Context) ([]category, error) {
 		cats = append(cats, c)
 	}
 	return cats, nil
+}
+
+// GetThread returns all posts in a thread including the OP.
+func (store *datastore) getThread(ctx context.Context, threadUID string) ([]post, error) {
+	rows, err := store.connection.Query(
+		ctx,
+		"SELECT uid, num, cat, content, created_at FROM posts WHERE uid = $1 OR parent = $1 ORDER BY num ASC",
+		threadUID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query thread: %w", err)
+	}
+	defer rows.Close()
+
+	var posts []post
+	for rows.Next() {
+		var p post
+		err := rows.Scan(&p.UID, &p.Num, &p.Cat, &p.Content, &p.CreatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse a queried category: %w", err)
+		}
+		posts = append(posts, p)
+	}
+	return posts, nil
+}
+
+// GetCatagory returns a single category.
+func (store *datastore) getCategory(ctx context.Context, catName string) (*category, error) {
+	rows, err := store.connection.Query(
+		ctx,
+		"SELECT name FROM cats WHERE name = $1",
+		catName,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query a category: %w", err)
+	}
+	defer rows.Close()
+
+	var cat category
+	rows.Scan(&cat.Name)
+	return &cat, nil
+}
+
+// GetCatView returns information about a category, and all the threads on it.
+func (store *datastore) getCatView(ctx context.Context, catName string) (*catview, error) {
+	cat, err := store.getCategory(ctx, catName)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := store.connection.Query(
+		ctx,
+		"SELECT uid, num, cat, content, created_at FROM posts WHERE cat = $1 AND parent IS NULL ORDER BY num ASC",
+		catName,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query category threads: %w", err)
+	}
+	defer rows.Close()
+
+	var posts []post
+	for rows.Next() {
+		var p post
+		err := rows.Scan(&p.UID, &p.Num, &p.Cat, &p.Content, &p.CreatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse a queried category view: %w", err)
+		}
+		posts = append(posts, p)
+	}
+
+	return &catview{
+		Threads:  posts,
+		category: *cat,
+	}, nil
 }
 
 // GetPosts returns all posts in a category.

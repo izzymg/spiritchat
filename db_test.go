@@ -4,23 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"testing"
-	"time"
 )
 
 // Test distinguishing invalid category errors on writes.
 func TestInvalidPostCategory(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+	ctx := context.Background()
 	store, err := newDatastore(ctx, connectionURL)
 	if err != nil {
 		t.Fatal(fmt.Errorf("failed to create datastore: %w", err))
 	}
-	defer store.cleanup(context.Background())
-
-	ctx, cancel = context.WithTimeout(ctx, time.Second*10)
-	defer cancel()
+	defer store.cleanup(ctx)
 
 	tr, err := store.trans(ctx)
 	if err != nil {
@@ -37,6 +32,40 @@ func TestInvalidPostCategory(t *testing.T) {
 		}
 		t.Log(err)
 	}
+}
+
+func TestGetThread(t *testing.T) {
+	ctx := context.Background()
+	store, err := newDatastore(ctx, connectionURL)
+	if err != nil {
+		t.Fatal(fmt.Errorf("failed to create datatstore: %w", err))
+	}
+
+	defer store.cleanup(ctx)
+
+	thread, err := store.getThread(ctx, "op4")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	log.Println(thread)
+}
+
+func TestGetCatView(t *testing.T) {
+	ctx := context.Background()
+	store, err := newDatastore(ctx, connectionURL)
+	if err != nil {
+		t.Fatal(fmt.Errorf("failed to create datatstore: %w", err))
+	}
+
+	defer store.cleanup(ctx)
+
+	catView, err := store.getCatView(ctx, "animals")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	log.Println(catView)
 }
 
 func genStr(n int, s string) string {
