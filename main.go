@@ -37,6 +37,7 @@ type category struct {
 // Post contains JSON information describing a thread, or reply to a thread.
 type post struct {
 	UID     string
+	Num     int
 	Cat     string
 	Parent  string
 	Content string
@@ -144,9 +145,10 @@ func (t *trans) commit(ctx context.Context) error {
 
 // WritePost will record the writing of a post onto the transaction.
 func (t *trans) writePost(ctx context.Context, p *post) error {
+
 	_, err := t.tx.Exec(
 		ctx,
-		"INSERT INTO posts (uid, cat, parent, content) VALUES ($1, $2, $3, $4)",
+		"CALL write_post($1, $2, $3, $4)",
 		p.UID,
 		p.Cat,
 		p.Parent,
