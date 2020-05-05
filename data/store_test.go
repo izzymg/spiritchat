@@ -1,4 +1,4 @@
-package main
+package data
 
 import (
 	"context"
@@ -8,26 +8,28 @@ import (
 	"testing"
 )
 
+const connectionURL = "postgres://postgres:ferret@localhost:5432/spiritchat"
+
 // Test distinguishing invalid category errors on writes.
 func TestInvalidPostCategory(t *testing.T) {
 	ctx := context.Background()
-	store, err := newDatastore(ctx, connectionURL)
+	store, err := NewDatastore(ctx, connectionURL)
 	if err != nil {
 		t.Fatal(fmt.Errorf("failed to create datastore: %w", err))
 	}
-	defer store.cleanup(ctx)
+	defer store.Cleanup(ctx)
 
 	tr, err := store.trans(ctx)
 	if err != nil {
 		t.Fatal(fmt.Errorf("failed to begin transaction: %w", err))
 	}
-	err = tr.writePost(ctx, &post{
+	err = tr.WritePost(ctx, &Post{
 		Cat:     "; DROP TABLE posts",
 		Content: "hello!!!",
 		UID:     generateUniqueID(),
 	})
 	if err != nil {
-		if !errors.Is(err, errInvalidCat) {
+		if !errors.Is(err, ErrInvalidCategory) {
 			t.Fatal(fmt.Errorf("failed to write post: %w", err))
 		}
 		t.Log(err)
@@ -36,14 +38,14 @@ func TestInvalidPostCategory(t *testing.T) {
 
 func TestGetThread(t *testing.T) {
 	ctx := context.Background()
-	store, err := newDatastore(ctx, connectionURL)
+	store, err := NewDatastore(ctx, connectionURL)
 	if err != nil {
 		t.Fatal(fmt.Errorf("failed to create datatstore: %w", err))
 	}
 
-	defer store.cleanup(ctx)
+	defer store.Cleanup(ctx)
 
-	thread, err := store.getThread(ctx, "op4")
+	thread, err := store.GetThread(ctx, "op4")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,14 +55,14 @@ func TestGetThread(t *testing.T) {
 
 func TestGetCatView(t *testing.T) {
 	ctx := context.Background()
-	store, err := newDatastore(ctx, connectionURL)
+	store, err := NewDatastore(ctx, connectionURL)
 	if err != nil {
 		t.Fatal(fmt.Errorf("failed to create datatstore: %w", err))
 	}
 
-	defer store.cleanup(ctx)
+	defer store.Cleanup(ctx)
 
-	catView, err := store.getCatView(ctx, "animals")
+	catView, err := store.GetCatView(ctx, "animals")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,22 +84,22 @@ func TestCheckContent(t *testing.T) {
 	onMax := genStr(maxContentLen, "a")
 	aboveMax := genStr(maxContentLen+1, "a")
 
-	_, errStr := checkContent(onMin)
+	_, errStr := CheckContent(onMin)
 	if len(errStr) > 0 {
 		t.Fatal("Expected no err string")
 	}
 
-	_, errStr = checkContent(belowMin)
+	_, errStr = CheckContent(belowMin)
 	if len(errStr) == 0 {
 		t.Fatal("Expected an err string")
 	}
 
-	_, errStr = checkContent(onMax)
+	_, errStr = CheckContent(onMax)
 	if len(errStr) > 0 {
 		t.Fatal("Expected no err string")
 	}
 
-	_, errStr = checkContent(aboveMax)
+	_, errStr = CheckContent(aboveMax)
 	if len(errStr) == 0 {
 		t.Fatal("Expected an err string")
 	}
