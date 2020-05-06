@@ -32,7 +32,7 @@ It could also be calculated for each individual thread each time a variable in t
 
 The ultimate goal of the rate system is to prioritise low-value, inactive threads, first and foremost when making room for new threads. New replies to a thread should "bump" the thread's rate up, inline with older forums.
 
-### Brief note on anonymity
+#### Brief note on anonymity
 
 SpiritChat will be built from the ground up to provide **anonymity** to all users, requiring **no login or authentication** to begin posting. As such, anti-spam measures will need to be taken.
 
