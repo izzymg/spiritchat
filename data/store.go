@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"html"
@@ -44,6 +45,11 @@ type Post struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// IsReply returns true if this post has a parent.
+func (post Post) IsReply() bool {
+	return len(post.Parent) > 0
+}
+
 // CatView contains JSON information about a category, and all the threads on it.
 type CatView struct {
 	Category
@@ -83,7 +89,7 @@ func (store *Store) Cleanup(ctx context.Context) error {
 }
 
 // GetCategories returns all categories.
-func (store *Store) GetCategories(ctx context.Context) ([]Category, error) {
+func (store *Store) GetCategories(ctx context.Context) ([]*Category, error) {
 	rows, err := store.connection.Query(
 		ctx,
 		"SELECT name FROM cats",
@@ -93,40 +99,81 @@ func (store *Store) GetCategories(ctx context.Context) ([]Category, error) {
 	}
 	defer rows.Close()
 
-	var cats []Category
+	var cats []*Category
 	for rows.Next() {
 		var c Category
 		err := rows.Scan(&c.Name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse a queried category: %w", err)
 		}
-		cats = append(cats, c)
+		cats = append(cats, &c)
 	}
 	return cats, nil
 }
 
-// GetThread returns all posts in a thread including the OP.
-func (store *Store) GetThread(ctx context.Context, threadUID string) ([]Post, error) {
-	rows, err := store.connection.Query(
+/*
+GetPostByNumber returns a post in a category by its number.
+Will return ErrNotFound if no such post. */
+func (store *Store) GetPostByNumber(ctx context.Context, catName string, num int) (*Post, error) {
+	row := store.connection.QueryRow(
 		ctx,
-		"SELECT uid, num, cat, content, created_at FROM posts WHERE uid = $1 OR parent = $1 ORDER BY num ASC",
-		threadUID,
+		"SELECT uid, num, cat, content, parent, created_at FROM posts WHERE cat = $1 AND num = $2",
+		catName,
+		num,
+	)
+
+	var p Post
+	var parent sql.NullString
+	err := row.Scan(&p.UID, &p.Num, &p.Cat, &p.Content, &parent, &p.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to parse a post by number: %w", err)
+	}
+	p.Parent = parent.String
+	return &p, nil
+}
+
+// GetThread returns all posts in a thread including the OP.
+func (store *Store) GetThread(ctx context.Context, catName string, threadNum int) ([]*Post, error) {
+
+	// First find the OP, and ensure it's valid
+	op, err := store.GetPostByNumber(ctx, catName, threadNum)
+	if err != nil {
+		return nil, err
+	}
+	if op.IsReply() {
+		return nil, ErrNotFound
+	}
+
+	replyRows, err := store.connection.Query(
+		ctx,
+		"SELECT uid, num, cat, content, parent, created_at FROM posts WHERE parent = $1 ORDER BY num ASC",
+		op.UID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query thread: %w", err)
+		return nil, fmt.Errorf("failed to query thread replies: %w", err)
 	}
-	defer rows.Close()
+	defer replyRows.Close()
 
-	var posts []Post
-	for rows.Next() {
+	// Append all the replies after the OP
+	replies := []*Post{op}
+	for replyRows.Next() {
 		var p Post
-		err := rows.Scan(&p.UID, &p.Num, &p.Cat, &p.Content, &p.CreatedAt)
+		var parent sql.NullString
+		err := replyRows.Scan(&p.UID, &p.Num, &p.Cat, &p.Content, &parent, &p.CreatedAt)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse a queried category: %w", err)
+			return nil, fmt.Errorf("failed to parse thread reply: %w", err)
 		}
-		posts = append(posts, p)
+		p.Parent = parent.String
+		replies = append(replies, &p)
 	}
-	return posts, nil
+	if len(replies) == 0 {
+		return nil, ErrNotFound
+	}
+
+	return replies, nil
 }
 
 /*
@@ -183,32 +230,6 @@ func (store *Store) GetCatView(ctx context.Context, catName string) (*CatView, e
 		Threads:  posts,
 		Category: *cat,
 	}, nil
-}
-
-// GetPosts returns all posts in a category.
-func (store *Store) GetPosts(ctx context.Context, cat string) ([]Post, error) {
-	rows, err := store.connection.Query(
-		ctx,
-		"SELECT uid, parent, content FROM posts WHERE cat = $1",
-		cat,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query posts: %w", err)
-	}
-	defer rows.Close()
-
-	var posts []Post
-	for rows.Next() {
-		p := Post{
-			Cat: cat,
-		}
-		err := rows.Scan(&p.UID, &p.Parent, &p.Content)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse a queried post: %w", err)
-		}
-		posts = append(posts, p)
-	}
-	return posts, nil
 }
 
 // Trans creates a new data store transaction, for write operations to the store.
