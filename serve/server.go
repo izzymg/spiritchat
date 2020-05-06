@@ -130,6 +130,7 @@ func (server *Server) PostPost(rw http.ResponseWriter, req *http.Request, params
 	content, errMessage := data.CheckContent(p.Content)
 	if len(errMessage) > 0 {
 		badRequest(errMessage)(rw, req)
+		return
 	}
 
 	trans, err := server.store.Trans(ctx)
