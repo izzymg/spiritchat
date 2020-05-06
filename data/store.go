@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"html"
 	"time"
 
 	"github.com/jackc/pgconn"
@@ -59,17 +58,6 @@ func (post Post) IsReply() bool {
 type CatView struct {
 	Category
 	Threads []Post `json:"threads"`
-}
-
-/*
-CheckContent validates a post's contents, returning the content sanitized as
-the first argument, or a human-readable error message as the second. */
-func CheckContent(content string) (string, string) {
-	content = html.EscapeString(content)
-	if len(content) < minContentLen || len(content) > maxContentLen {
-		return "", InvalidContentLen
-	}
-	return content, ""
 }
 
 // NewDatastore creates a new data store, creating a connection.
