@@ -93,6 +93,64 @@ func (server *Server) GetThread(rw http.ResponseWriter, req *http.Request, param
 	}
 }
 
+// PostPost handles a POST request to post a new post.
+func (server *Server) PostPost(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
+	ctx, cancel := context.WithTimeout(req.Context(), time.Second*20)
+	defer cancel()
+
+	catName := params.ByName("cat")
+	threadNumber, err := strconv.Atoi(params.ByName("thread"))
+	if err != nil {
+		badRequest("Invalid thread number")(rw, req)
+		return
+	}
+
+	// If given thread number is not zero, look up OP's unique ID
+	parentUID := ""
+	if threadNumber != 0 {
+		op, err := server.store.GetPostByNumber(ctx, catName, threadNumber)
+		if err != nil {
+			if errors.Is(err, data.ErrNotFound) {
+				notFound("No such thread")(rw, req)
+				return
+			}
+			internalError("Sorry, an error occurred while saving your post")(rw, req)
+			return
+		}
+		if op.IsReply() {
+			notFound("No such thread")(rw, req)
+			return
+		}
+		parentUID = op.UID
+	}
+
+	// Decode body and write post
+	var p data.UserPost
+	json.NewDecoder(req.Body).Decode(&p)
+	content, errMessage := data.CheckContent(p.Content)
+	if len(errMessage) > 0 {
+		badRequest(errMessage)(rw, req)
+	}
+
+	trans, err := server.store.Trans(ctx)
+	if err != nil {
+		internalError("Sorry, an error occurred while saving your post")(rw, req)
+		log.Println(err)
+		return
+	}
+	err = trans.WritePost(ctx, &data.Post{
+		Content:   content,
+		Cat:       catName,
+		ParentUID: parentUID,
+	})
+	if err != nil {
+		internalError("Sorry, an error occurred while saving your post.")(rw, req)
+		log.Println(err)
+		return
+	}
+	trans.Commit(ctx)
+}
+
 // NewServer stub todo
 func NewServer(store *data.Store, address string) *Server {
 
@@ -108,6 +166,7 @@ func NewServer(store *data.Store, address string) *Server {
 	router := httprouter.New()
 	router.GET("/v1", server.GetCategories)
 	router.GET("/v1/:cat", server.GetCatView)
+	router.POST("/v1/:cat/:thread", server.PostPost)
 	router.GET("/v1/:cat/:thread", server.GetThread)
 
 	server.httpServer.Handler = router

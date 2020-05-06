@@ -40,14 +40,19 @@ type Post struct {
 	UID       string    `json:"-"`
 	Num       int       `json:"num"`
 	Cat       string    `json:"cat"`
-	Parent    string    `json:"parent"`
+	ParentUID string    `json:"-"`
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// UserPost contains JSON information describing an incoming post for writing.
+type UserPost struct {
+	Content string `json:"content"`
+}
+
 // IsReply returns true if this post has a parent.
 func (post Post) IsReply() bool {
-	return len(post.Parent) > 0
+	return len(post.ParentUID) > 0
 }
 
 // CatView contains JSON information about a category, and all the threads on it.
@@ -131,7 +136,7 @@ func (store *Store) GetPostByNumber(ctx context.Context, catName string, num int
 		}
 		return nil, fmt.Errorf("failed to parse a post by number: %w", err)
 	}
-	p.Parent = parent.String
+	p.ParentUID = parent.String
 	return &p, nil
 }
 
@@ -166,7 +171,7 @@ func (store *Store) GetThread(ctx context.Context, catName string, threadNum int
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse thread reply: %w", err)
 		}
-		p.Parent = parent.String
+		p.ParentUID = parent.String
 		replies = append(replies, &p)
 	}
 	if len(replies) == 0 {
@@ -251,15 +256,20 @@ func (t *Trans) Commit(ctx context.Context) error {
 	return t.tx.Commit(ctx)
 }
 
-// WritePost will record the writing of a post onto the transaction.
+/*
+WritePost will record the writing of a post onto the transaction.
+Generates a unique ID for the post, and saves only its category, parent
+and content. */
 func (t *Trans) WritePost(ctx context.Context, p *Post) error {
+
+	// Write post procedure expects OP UID
 
 	_, err := t.tx.Exec(
 		ctx,
 		"CALL write_post($1, $2, $3, $4)",
-		p.UID,
+		generateUniqueID(),
 		p.Cat,
-		p.Parent,
+		p.ParentUID,
 		p.Content,
 	)
 

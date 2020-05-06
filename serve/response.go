@@ -18,3 +18,10 @@ func notFound(message string) func(rw http.ResponseWriter, req *http.Request) {
 		fmt.Fprintf(rw, message)
 	}
 }
+
+func badRequest(message string) func(rw http.ResponseWriter, req *http.Request) {
+	return func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(rw, message)
+	}
+}
