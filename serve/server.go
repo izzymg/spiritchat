@@ -152,6 +152,21 @@ func (server *Server) PostPost(rw http.ResponseWriter, req *http.Request, params
 	trans.Commit(ctx)
 }
 
+// Handle corsPreflight pre-flighting
+func corsPreflight(rw http.ResponseWriter, req *http.Request) {
+	rw.Header().Set("Access-Control-Allow-Origin", "*")
+	rw.Header().Set("Access-Control-Allow-Methods", "GET,POST")
+	rw.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	rw.WriteHeader(http.StatusNoContent)
+}
+
+func corsMiddle(hand httprouter.Handle) httprouter.Handle {
+	return func(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
+		rw.Header().Set("Access-Control-Allow-Origin", "*")
+		hand(rw, req, params)
+	}
+}
+
 // NewServer stub todo
 func NewServer(store *data.Store, address string) *Server {
 
@@ -165,10 +180,11 @@ func NewServer(store *data.Store, address string) *Server {
 	}
 
 	router := httprouter.New()
-	router.GET("/v1", server.GetCategories)
-	router.GET("/v1/:cat", server.GetCatView)
-	router.POST("/v1/:cat/:thread", server.PostPost)
-	router.GET("/v1/:cat/:thread", server.GetThread)
+	router.GlobalOPTIONS = http.HandlerFunc(corsPreflight)
+	router.GET("/v1", corsMiddle(server.GetCategories))
+	router.GET("/v1/:cat", corsMiddle(server.GetCatView))
+	router.POST("/v1/:cat/:thread", corsMiddle(server.PostPost))
+	router.GET("/v1/:cat/:thread", corsMiddle(server.GetThread))
 
 	server.httpServer.Handler = router
 	return server
