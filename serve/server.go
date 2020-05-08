@@ -66,8 +66,8 @@ func (server *Server) HandleGetCatView(rw http.ResponseWriter, req *http.Request
 	}
 }
 
-// HandleGetThread handles a GET request for information on a thread.
-func (server *Server) HandleGetThread(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
+// HandleGetThreadView handles a GET request for information on a thread.
+func (server *Server) HandleGetThreadView(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
 	ctx, cancel := context.WithTimeout(req.Context(), time.Second*10)
 	defer cancel()
 
@@ -76,7 +76,7 @@ func (server *Server) HandleGetThread(rw http.ResponseWriter, req *http.Request,
 		notFound("Invalid thread number")(rw, req)
 		return
 	}
-	thread, err := server.store.GetThread(ctx, params.ByName("cat"), threadNum)
+	threadView, err := server.store.GetThreadView(ctx, params.ByName("cat"), threadNum)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			notFound(err.Error())(rw, req)
@@ -87,7 +87,7 @@ func (server *Server) HandleGetThread(rw http.ResponseWriter, req *http.Request,
 		return
 	}
 
-	err = json.NewEncoder(rw).Encode(thread)
+	err = json.NewEncoder(rw).Encode(threadView)
 	if err != nil {
 		log.Printf("failed to encode JSON response: %s", err)
 	}
@@ -192,7 +192,7 @@ func NewServer(store *data.Store, address string) *Server {
 	router.GET("/v1", middlewareCORS(server.HandleGetCategories))
 	router.GET("/v1/:cat", middlewareCORS(server.HandleGetCatView))
 	router.POST("/v1/:cat/:thread", middlewareCORS(server.HandleWritePost))
-	router.GET("/v1/:cat/:thread", middlewareCORS(server.HandleGetThread))
+	router.GET("/v1/:cat/:thread", middlewareCORS(server.HandleGetThreadView))
 
 	server.httpServer.Handler = router
 	return server

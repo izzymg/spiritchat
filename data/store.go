@@ -56,8 +56,16 @@ func (post Post) IsReply() bool {
 
 // CatView contains JSON information about a category, and all the threads on it.
 type CatView struct {
-	Category
-	Threads []Post `json:"threads"`
+	Category *Category `json:"category"`
+	Threads  []*Post   `json:"threads"`
+}
+
+/*
+ThreadView contains JSON information about all
+the posts in a thread, and the category its on. */
+type ThreadView struct {
+	Category *Category `json:"category"`
+	Posts    []*Post   `json:"posts"`
 }
 
 // NewDatastore creates a new data store, creating a connection.
@@ -128,10 +136,19 @@ func (store *Store) GetPostByNumber(ctx context.Context, catName string, num int
 	return &p, nil
 }
 
-// GetThread returns all posts in a thread including the OP.
-func (store *Store) GetThread(ctx context.Context, catName string, threadNum int) ([]*Post, error) {
+/*
+GetThreadView returns all the posts in a thread, and the category they're on.
+May return ErrNotFound if the requested thread is not an OP thread, or the category
+is invalid */
+func (store *Store) GetThreadView(ctx context.Context, catName string, threadNum int) (*ThreadView, error) {
 
-	// First find the OP, and ensure it's valid
+	// Find the category, ensure it's valid
+	category, err := store.GetCategory(ctx, catName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the OP, ensure it's valid
 	op, err := store.GetPostByNumber(ctx, catName, threadNum)
 	if err != nil {
 		return nil, err
@@ -151,22 +168,25 @@ func (store *Store) GetThread(ctx context.Context, catName string, threadNum int
 	defer replyRows.Close()
 
 	// Append all the replies after the OP
-	replies := []*Post{op}
+	posts := []*Post{op}
 	for replyRows.Next() {
-		var p Post
+		post := &Post{}
 		var parent sql.NullString
-		err := replyRows.Scan(&p.UID, &p.Num, &p.Cat, &p.Content, &parent, &p.CreatedAt)
+		err := replyRows.Scan(&post.UID, &post.Num, &post.Cat, &post.Content, &parent, &post.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse thread reply: %w", err)
 		}
-		p.ParentUID = parent.String
-		replies = append(replies, &p)
+		post.ParentUID = parent.String
+		posts = append(posts, post)
 	}
-	if len(replies) == 0 {
+	if len(posts) == 0 {
 		return nil, ErrNotFound
 	}
 
-	return replies, nil
+	return &ThreadView{
+		Category: category,
+		Posts:    posts,
+	}, nil
 }
 
 /*
@@ -210,18 +230,18 @@ func (store *Store) GetCatView(ctx context.Context, catName string) (*CatView, e
 	}
 	defer rows.Close()
 
-	var posts []Post
+	var posts []*Post
 	for rows.Next() {
-		var p Post
-		err := rows.Scan(&p.UID, &p.Num, &p.Cat, &p.Content, &p.CreatedAt)
+		post := &Post{}
+		err := rows.Scan(&post.UID, &post.Num, &post.Cat, &post.Content, &post.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse a queried category view: %w", err)
 		}
-		posts = append(posts, p)
+		posts = append(posts, post)
 	}
 	return &CatView{
 		Threads:  posts,
-		Category: *cat,
+		Category: cat,
 	}, nil
 }
 
