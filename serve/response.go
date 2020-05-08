@@ -5,6 +5,10 @@ import (
 	"net/http"
 )
 
+type ok struct {
+	Message string `json:"message"`
+}
+
 func internalError(message string) func(rw http.ResponseWriter, req *http.Request) {
 	return func(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusInternalServerError)

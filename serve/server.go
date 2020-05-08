@@ -150,6 +150,14 @@ func (server *Server) PostPost(rw http.ResponseWriter, req *http.Request, params
 		return
 	}
 	trans.Commit(ctx)
+
+	err = json.NewEncoder(rw).Encode(ok{
+		Message: "Post submitted",
+	})
+
+	if err != nil {
+		log.Println(err)
+	}
 }
 
 // Handle corsPreflight pre-flighting
