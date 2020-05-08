@@ -29,79 +29,72 @@ func (server *Server) Listen(ctx context.Context) error {
 }
 
 // HandleGetCategories handles a GET request for information on categories.
-func (server *Server) HandleGetCategories(rw http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	ctx, cancel := context.WithTimeout(req.Context(), time.Second*10)
-	defer cancel()
+func (server *Server) HandleGetCategories(ctx context.Context, req *request, respond respondFunc) {
 	categories, err := server.store.GetCategories(ctx)
 	if err != nil {
-		internalError("Sorry, an error occurred while fetching categories")(rw, req)
+		respond(
+			http.StatusInternalServerError,
+			nil, "Sorry, an error occurred while fetching categories",
+		)
 		log.Println(err)
 		return
 	}
 
-	err = json.NewEncoder(rw).Encode(categories)
-	if err != nil {
-		log.Printf("failed to encode JSON response: %s", err)
-	}
+	respond(http.StatusOK, categories, "")
 }
 
 // HandleGetCatView handles a GET request for information on a single category.
-func (server *Server) HandleGetCatView(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
-	ctx, cancel := context.WithTimeout(req.Context(), time.Second*10)
-	defer cancel()
-	view, err := server.store.GetCatView(ctx, params.ByName("cat"))
+func (server *Server) HandleGetCatView(ctx context.Context, req *request, respond respondFunc) {
+	view, err := server.store.GetCatView(ctx, req.params.ByName("cat"))
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			notFound(err.Error())(rw, req)
+			respond(
+				http.StatusInternalServerError,
+				nil, err.Error(),
+			)
 			return
 		}
-		internalError("Sorry, an error occurred while fetching the category's threads")(rw, req)
+		respond(
+			http.StatusInternalServerError,
+			nil, "Sorry, an error occurred while fetching the category's threads",
+		)
 		log.Println(err)
 		return
 	}
 
-	err = json.NewEncoder(rw).Encode(view)
-	if err != nil {
-		log.Printf("failed to encode JSON response: %s", err)
-	}
+	respond(http.StatusOK, view, "")
 }
 
 // HandleGetThreadView handles a GET request for information on a thread.
-func (server *Server) HandleGetThreadView(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
-	ctx, cancel := context.WithTimeout(req.Context(), time.Second*10)
-	defer cancel()
-
-	threadNum, err := strconv.Atoi(params.ByName("thread"))
+func (server *Server) HandleGetThreadView(ctx context.Context, req *request, respond respondFunc) {
+	threadNum, err := strconv.Atoi(req.params.ByName("thread"))
 	if err != nil {
-		notFound("Invalid thread number")(rw, req)
+		respond(http.StatusNotFound, nil, "Invalid thread number")
 		return
 	}
-	threadView, err := server.store.GetThreadView(ctx, params.ByName("cat"), threadNum)
+	threadView, err := server.store.GetThreadView(ctx, req.params.ByName("cat"), threadNum)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			notFound(err.Error())(rw, req)
+			respond(http.StatusNotFound, nil, err.Error())
 			return
 		}
-		internalError("Sorry, an error occurred while fetching the thread")(rw, req)
+		respond(http.StatusInternalServerError, nil, "Sorry, an error occurred while fetching the thread")
 		log.Println(err)
 		return
 	}
 
-	err = json.NewEncoder(rw).Encode(threadView)
-	if err != nil {
-		log.Printf("failed to encode JSON response: %s", err)
-	}
+	respond(http.StatusOK, threadView, "")
 }
 
 // HandleWritePost handles a POST request to post a new post.
-func (server *Server) HandleWritePost(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
-	ctx, cancel := context.WithTimeout(req.Context(), time.Second*20)
-	defer cancel()
-
-	catName := params.ByName("cat")
-	threadNumber, err := strconv.Atoi(params.ByName("thread"))
+func (server *Server) HandleWritePost(ctx context.Context, req *request, respond respondFunc) {
+	catName := req.params.ByName("cat")
+	threadNumber, err := strconv.Atoi(req.params.ByName("thread"))
 	if err != nil {
-		badRequest("Invalid thread number")(rw, req)
+		respond(
+			http.StatusBadRequest,
+			nil, "Invalid thread number",
+		)
 		return
 	}
 
@@ -111,14 +104,23 @@ func (server *Server) HandleWritePost(rw http.ResponseWriter, req *http.Request,
 		op, err := server.store.GetPostByNumber(ctx, catName, threadNumber)
 		if err != nil {
 			if errors.Is(err, data.ErrNotFound) {
-				notFound("No such thread")(rw, req)
+				respond(
+					http.StatusNotFound,
+					nil, "Invalid thread number",
+				)
 				return
 			}
-			internalError("Sorry, an error occurred while saving your post")(rw, req)
+			respond(
+				http.StatusInternalServerError,
+				nil, "Sorry, an error occurred while saving your post",
+			)
 			return
 		}
 		if op.IsReply() {
-			notFound("No such thread")(rw, req)
+			respond(
+				http.StatusNotFound,
+				nil, "No such found",
+			)
 			return
 		}
 		parentUID = op.UID
@@ -126,17 +128,33 @@ func (server *Server) HandleWritePost(rw http.ResponseWriter, req *http.Request,
 
 	// Decode body and write post
 	var p data.UserPost
-	json.NewDecoder(req.Body).Decode(&p)
+	json.NewDecoder(req.rawRequest.Body).Decode(&p)
 	content, errMessage := data.CheckContent(p.Content)
 	if len(errMessage) > 0 {
-		badRequest(errMessage)(rw, req)
+		respond(
+			http.StatusBadRequest,
+			nil, errMessage,
+		)
 		return
 	}
 
 	trans, err := server.store.Trans(ctx)
+	rollback := func() {
+		err := trans.Rollback(ctx)
+		if err != nil {
+			log.Printf("Failed to rollback transaction: %s", err)
+		}
+	}
 	if err != nil {
-		internalError("Sorry, an error occurred while saving your post")(rw, req)
-		log.Println(err)
+		rollback()
+		if err != nil {
+			log.Printf("Failed to rollback transaction: %s", err)
+		}
+		respond(
+			http.StatusInternalServerError,
+			nil, "Sorry, an error occurred while saving your post",
+		)
+		log.Printf("Failed to create post write transaction: %s", err)
 		return
 	}
 	err = trans.WritePost(ctx, &data.Post{
@@ -145,19 +163,25 @@ func (server *Server) HandleWritePost(rw http.ResponseWriter, req *http.Request,
 		ParentUID: parentUID,
 	})
 	if err != nil {
-		internalError("Sorry, an error occurred while saving your post.")(rw, req)
-		log.Println(err)
+		rollback()
+		if errors.Is(err, data.ErrNotFound) {
+			respond(http.StatusBadRequest, nil, err.Error())
+			return
+		}
+		respond(
+			http.StatusInternalServerError,
+			nil, "Sorry, an error occurred while saving your post",
+		)
+		log.Printf("Failed to write post to db: %s", err)
 		return
 	}
-	trans.Commit(ctx)
-
-	err = json.NewEncoder(rw).Encode(ok{
-		Message: "Post submitted",
-	})
-
+	err = trans.Commit(ctx)
 	if err != nil {
-		log.Println(err)
+		rollback()
+		log.Printf("Failed to commit post write: %s", err)
 	}
+
+	respond(http.StatusOK, ok{Message: "Post submitted"}, "")
 }
 
 // Handle handleCORSPreflight pre-flighting
@@ -189,10 +213,10 @@ func NewServer(store *data.Store, address string) *Server {
 
 	router := httprouter.New()
 	router.GlobalOPTIONS = http.HandlerFunc(handleCORSPreflight)
-	router.GET("/v1", middlewareCORS(server.HandleGetCategories))
-	router.GET("/v1/:cat", middlewareCORS(server.HandleGetCatView))
-	router.POST("/v1/:cat/:thread", middlewareCORS(server.HandleWritePost))
-	router.GET("/v1/:cat/:thread", middlewareCORS(server.HandleGetThreadView))
+	router.GET("/v1", middlewareCORS(genHandler(server.HandleGetCategories)))
+	router.GET("/v1/:cat", middlewareCORS(genHandler(server.HandleGetCatView)))
+	router.POST("/v1/:cat/:thread", middlewareCORS(genHandler(server.HandleWritePost)))
+	router.GET("/v1/:cat/:thread", middlewareCORS(genHandler(server.HandleGetThreadView)))
 
 	server.httpServer.Handler = router
 	return server

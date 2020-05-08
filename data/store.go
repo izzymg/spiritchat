@@ -264,6 +264,11 @@ func (t *Trans) Commit(ctx context.Context) error {
 	return t.tx.Commit(ctx)
 }
 
+// Rollback will revert all write operations recorded to the data store.
+func (t *Trans) Rollback(ctx context.Context) error {
+	return t.tx.Rollback(ctx)
+}
+
 /*
 WritePost will record the writing of a post onto the transaction.
 Generates a unique ID for the post, and saves only its category, parent
