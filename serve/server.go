@@ -28,8 +28,8 @@ func (server *Server) Listen(ctx context.Context) error {
 	}
 }
 
-// GetCategories handles a GET request for information on categories.
-func (server *Server) GetCategories(rw http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// HandleGetCategories handles a GET request for information on categories.
+func (server *Server) HandleGetCategories(rw http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	ctx, cancel := context.WithTimeout(req.Context(), time.Second*10)
 	defer cancel()
 	categories, err := server.store.GetCategories(ctx)
@@ -45,8 +45,8 @@ func (server *Server) GetCategories(rw http.ResponseWriter, req *http.Request, _
 	}
 }
 
-// GetCatView handles a GET request for information on a single category.
-func (server *Server) GetCatView(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
+// HandleGetCatView handles a GET request for information on a single category.
+func (server *Server) HandleGetCatView(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
 	ctx, cancel := context.WithTimeout(req.Context(), time.Second*10)
 	defer cancel()
 	view, err := server.store.GetCatView(ctx, params.ByName("cat"))
@@ -66,8 +66,8 @@ func (server *Server) GetCatView(rw http.ResponseWriter, req *http.Request, para
 	}
 }
 
-// GetThread handles a GET request for information on a thread.
-func (server *Server) GetThread(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
+// HandleGetThread handles a GET request for information on a thread.
+func (server *Server) HandleGetThread(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
 	ctx, cancel := context.WithTimeout(req.Context(), time.Second*10)
 	defer cancel()
 
@@ -93,8 +93,8 @@ func (server *Server) GetThread(rw http.ResponseWriter, req *http.Request, param
 	}
 }
 
-// PostPost handles a POST request to post a new post.
-func (server *Server) PostPost(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
+// HandleWritePost handles a POST request to post a new post.
+func (server *Server) HandleWritePost(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
 	ctx, cancel := context.WithTimeout(req.Context(), time.Second*20)
 	defer cancel()
 
@@ -160,15 +160,15 @@ func (server *Server) PostPost(rw http.ResponseWriter, req *http.Request, params
 	}
 }
 
-// Handle corsPreflight pre-flighting
-func corsPreflight(rw http.ResponseWriter, req *http.Request) {
+// Handle handleCORSPreflight pre-flighting
+func handleCORSPreflight(rw http.ResponseWriter, req *http.Request) {
 	rw.Header().Set("Access-Control-Allow-Origin", "*")
 	rw.Header().Set("Access-Control-Allow-Methods", "GET,POST")
 	rw.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	rw.WriteHeader(http.StatusNoContent)
 }
 
-func corsMiddle(hand httprouter.Handle) httprouter.Handle {
+func middlewareCORS(hand httprouter.Handle) httprouter.Handle {
 	return func(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
 		rw.Header().Set("Access-Control-Allow-Origin", "*")
 		hand(rw, req, params)
@@ -188,11 +188,11 @@ func NewServer(store *data.Store, address string) *Server {
 	}
 
 	router := httprouter.New()
-	router.GlobalOPTIONS = http.HandlerFunc(corsPreflight)
-	router.GET("/v1", corsMiddle(server.GetCategories))
-	router.GET("/v1/:cat", corsMiddle(server.GetCatView))
-	router.POST("/v1/:cat/:thread", corsMiddle(server.PostPost))
-	router.GET("/v1/:cat/:thread", corsMiddle(server.GetThread))
+	router.GlobalOPTIONS = http.HandlerFunc(handleCORSPreflight)
+	router.GET("/v1", middlewareCORS(server.HandleGetCategories))
+	router.GET("/v1/:cat", middlewareCORS(server.HandleGetCatView))
+	router.POST("/v1/:cat/:thread", middlewareCORS(server.HandleWritePost))
+	router.GET("/v1/:cat/:thread", middlewareCORS(server.HandleGetThread))
 
 	server.httpServer.Handler = router
 	return server
