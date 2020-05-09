@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 
 	"github.com/julienschmidt/httprouter"
@@ -29,9 +30,12 @@ func genHandler(handler handlerFunc) httprouter.Handle {
 		if len(ip) == 0 {
 			ip = req.Header.Get("X-REAL-IP")
 			if len(ip) == 0 {
-				ip = req.RemoteAddr
+				host, _, _ := net.SplitHostPort(req.RemoteAddr)
+				ip = host
 			}
 		}
+
+		log.Printf("Request %s: %s from %s agent :%s", req.Method, req.URL.Path, ip, req.UserAgent())
 
 		handler(
 			req.Context(),
