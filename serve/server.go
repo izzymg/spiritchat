@@ -130,22 +130,24 @@ func (server *Server) HandleWritePost(ctx context.Context, req *request, respond
 }
 
 // Handle handleCORSPreflight pre-flighting
-func handleCORSPreflight(rw http.ResponseWriter, req *http.Request) {
-	rw.Header().Set("Access-Control-Allow-Origin", "*")
-	rw.Header().Set("Access-Control-Allow-Methods", "GET,POST")
-	rw.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	rw.WriteHeader(http.StatusNoContent)
+func handleCORSPreflight(allowedOrigin string) http.HandlerFunc {
+	return func(rw http.ResponseWriter, req *http.Request) {
+		rw.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+		rw.Header().Set("Access-Control-Allow-Methods", "GET,POST")
+		rw.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		rw.WriteHeader(http.StatusNoContent)
+	}
 }
 
-func middlewareCORS(hand httprouter.Handle) httprouter.Handle {
+func middlewareCORS(hand httprouter.Handle, allowedOrigin string) httprouter.Handle {
 	return func(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
-		rw.Header().Set("Access-Control-Allow-Origin", "*")
+		rw.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		hand(rw, req, params)
 	}
 }
 
 // NewServer stub todo
-func NewServer(store *data.Store, address string) *Server {
+func NewServer(store *data.Store, address string, corsAllow string) *Server {
 
 	server := &Server{
 		store: store,
@@ -157,11 +159,11 @@ func NewServer(store *data.Store, address string) *Server {
 	}
 
 	router := httprouter.New()
-	router.GlobalOPTIONS = http.HandlerFunc(handleCORSPreflight)
-	router.GET("/v1", middlewareCORS(genHandler(server.HandleGetCategories)))
-	router.GET("/v1/:cat", middlewareCORS(genHandler(server.HandleGetCatView)))
-	router.POST("/v1/:cat/:thread", middlewareCORS(genHandler(server.HandleWritePost)))
-	router.GET("/v1/:cat/:thread", middlewareCORS(genHandler(server.HandleGetThreadView)))
+	router.GlobalOPTIONS = http.HandlerFunc(handleCORSPreflight(corsAllow))
+	router.GET("/v1", middlewareCORS(genHandler(server.HandleGetCategories), corsAllow))
+	router.GET("/v1/:cat", middlewareCORS(genHandler(server.HandleGetCatView), corsAllow))
+	router.POST("/v1/:cat/:thread", middlewareCORS(genHandler(server.HandleWritePost), corsAllow))
+	router.GET("/v1/:cat/:thread", middlewareCORS(genHandler(server.HandleGetThreadView), corsAllow))
 
 	server.httpServer.Handler = router
 	return server
