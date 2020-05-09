@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gomodule/redigo/redis"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 	"github.com/rs/xid"
@@ -69,29 +70,37 @@ type ThreadView struct {
 }
 
 // NewDatastore creates a new data store, creating a connection.
-func NewDatastore(ctx context.Context, url string) (*Store, error) {
-	conn, err := pgx.Connect(ctx, url)
+func NewDatastore(ctx context.Context, pgURL string, redisURL string) (*Store, error) {
+	redisConn, err := redis.DialURL(redisURL)
 	if err != nil {
-		return nil, fmt.Errorf("db connection failed: %w", err)
+		return nil, fmt.Errorf("redis connection failed: %w", err)
+	}
+	pgConn, err := pgx.Connect(ctx, pgURL)
+	if err != nil {
+		return nil, fmt.Errorf("pg connection failed: %w", err)
 	}
 	return &Store{
-		connection: conn,
+		pgConn:    pgConn,
+		redisConn: redisConn,
 	}, nil
 }
 
 // Store allows for writing and reading from the persistent data store.
 type Store struct {
-	connection *pgx.Conn
+	pgConn    *pgx.Conn
+	redisConn redis.Conn
 }
 
 // Cleanup cleans the underlying connection to the data store.
 func (store *Store) Cleanup(ctx context.Context) error {
-	return store.connection.Close(ctx)
+	err := store.pgConn.Close(ctx)
+	err = store.redisConn.Close()
+	return err
 }
 
 // GetCategories returns all categories.
 func (store *Store) GetCategories(ctx context.Context) ([]*Category, error) {
-	rows, err := store.connection.Query(
+	rows, err := store.pgConn.Query(
 		ctx,
 		"SELECT name FROM cats",
 	)
@@ -116,7 +125,7 @@ func (store *Store) GetCategories(ctx context.Context) ([]*Category, error) {
 GetPostByNumber returns a post in a category by its number.
 Will return ErrNotFound if no such post. */
 func (store *Store) GetPostByNumber(ctx context.Context, catName string, num int) (*Post, error) {
-	row := store.connection.QueryRow(
+	row := store.pgConn.QueryRow(
 		ctx,
 		"SELECT uid, num, cat, content, parent, created_at FROM posts WHERE cat = $1 AND num = $2",
 		catName,
@@ -157,7 +166,7 @@ func (store *Store) GetThreadView(ctx context.Context, catName string, threadNum
 		return nil, ErrNotFound
 	}
 
-	replyRows, err := store.connection.Query(
+	replyRows, err := store.pgConn.Query(
 		ctx,
 		"SELECT uid, num, cat, content, parent, created_at FROM posts WHERE parent = $1 ORDER BY num ASC",
 		op.UID,
@@ -193,7 +202,7 @@ func (store *Store) GetThreadView(ctx context.Context, catName string, threadNum
 GetCategory returns a single category. May return ErrNotFound if the given category
 name is invalid. */
 func (store *Store) GetCategory(ctx context.Context, catName string) (*Category, error) {
-	rows, err := store.connection.Query(
+	rows, err := store.pgConn.Query(
 		ctx,
 		"SELECT name FROM cats WHERE name = $1",
 		catName,
@@ -220,7 +229,7 @@ func (store *Store) GetCatView(ctx context.Context, catName string) (*CatView, e
 		return nil, err
 	}
 
-	rows, err := store.connection.Query(
+	rows, err := store.pgConn.Query(
 		ctx,
 		"SELECT uid, num, cat, content, created_at FROM posts WHERE cat = $1 AND parent IS NULL ORDER BY num ASC",
 		catName,
@@ -260,7 +269,7 @@ func (store *Store) WritePost(ctx context.Context, catName string, threadNum int
 		opUID = op.UID
 	}
 
-	tx, err := store.connection.Begin(ctx)
+	tx, err := store.pgConn.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to obtain tx for post write: %w", tx)
 	}

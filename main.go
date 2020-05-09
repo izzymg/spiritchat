@@ -8,11 +8,11 @@ import (
 	"spiritchat/serve"
 )
 
-const dbURL = "postgres://postgres:ferret@localhost:5432/spiritchat"
-
 type config struct {
 	HTTPAddress string
 	CORSAllow   string
+	PGURL       string
+	RedisURL    string
 }
 
 // Parse environment for configuration
@@ -20,6 +20,8 @@ func parseEnv() config {
 	conf := config{
 		HTTPAddress: "0.0.0.0:3000",
 		CORSAllow:   "https://example.com",
+		PGURL:       os.Getenv("SPIRITCHAT_PG_URL"),
+		RedisURL:    os.Getenv("SPIRITCHAT_REDIS_URL"),
 	}
 	if addr, ok := os.LookupEnv("SPIRITCHAT_ADDRESS"); ok {
 		conf.HTTPAddress = addr
@@ -40,12 +42,13 @@ func main() {
 	defer cancel()
 
 	log.Println("Establishing database connection")
-	store, err := data.NewDatastore(ctx, dbURL)
+	store, err := data.NewDatastore(ctx, conf.PGURL, conf.RedisURL)
 	if err != nil {
 		log.Printf("Failed to initalize database: %s", err)
+		return
 	}
 
-	server := serve.NewServer(store, conf.HTTPAddress)
+	server := serve.NewServer(store, conf.HTTPAddress, conf.CORSAllow)
 	log.Printf("Starting server on %s, allowing %s CORS", conf.HTTPAddress, conf.CORSAllow)
 	log.Println(server.Listen(ctx))
 }
