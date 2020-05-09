@@ -271,7 +271,7 @@ func (store *Store) WritePost(ctx context.Context, catName string, threadNum int
 
 	tx, err := store.pgConn.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to obtain tx for post write: %w", tx)
+		return fmt.Errorf("failed to obtain tx for post write: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
