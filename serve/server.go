@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"spiritchat/data"
@@ -12,6 +13,12 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 )
+
+const postLimitSeconds = 30
+const postFailMessage = "Sorry, an error occurred while saving your post"
+const genericFailMessage = "Sorry, an error occurred while handling your request."
+
+var postLimitErrorMessage = fmt.Sprintf("You must wait %d seconds between posts", postLimitSeconds)
 
 // Server stub todo
 type Server struct {
@@ -33,8 +40,7 @@ func (server *Server) HandleGetCategories(ctx context.Context, req *request, res
 	categories, err := server.store.GetCategories(ctx)
 	if err != nil {
 		respond(
-			http.StatusInternalServerError,
-			nil, "Sorry, an error occurred while fetching categories",
+			http.StatusInternalServerError, nil, genericFailMessage,
 		)
 		log.Println(err)
 		return
@@ -55,8 +61,7 @@ func (server *Server) HandleGetCatView(ctx context.Context, req *request, respon
 			return
 		}
 		respond(
-			http.StatusInternalServerError,
-			nil, "Sorry, an error occurred while fetching the category's threads",
+			http.StatusInternalServerError, nil, genericFailMessage,
 		)
 		log.Println(err)
 		return
@@ -78,7 +83,7 @@ func (server *Server) HandleGetThreadView(ctx context.Context, req *request, res
 			respond(http.StatusNotFound, nil, err.Error())
 			return
 		}
-		respond(http.StatusInternalServerError, nil, "Sorry, an error occurred while fetching the thread")
+		respond(http.StatusInternalServerError, nil, genericFailMessage)
 		log.Println(err)
 		return
 	}
@@ -88,6 +93,23 @@ func (server *Server) HandleGetThreadView(ctx context.Context, req *request, res
 
 // HandleWritePost handles a POST request to post a new post.
 func (server *Server) HandleWritePost(ctx context.Context, req *request, respond respondFunc) {
+	isLimited, err := server.store.IsRateLimited(req.ip)
+	if err != nil {
+		respond(http.StatusInternalServerError, nil, postFailMessage)
+		log.Printf("Failed to check rate limiting on request: %s", err)
+		return
+	}
+	if isLimited {
+		respond(http.StatusBadRequest, nil, postLimitErrorMessage)
+		return
+	}
+	err = server.store.RateLimit(req.ip, postLimitSeconds)
+	if err != nil {
+		respond(http.StatusInternalServerError, nil, postFailMessage)
+		log.Printf("Failed to rate limit request: %s", err)
+		return
+	}
+
 	catName := req.params.ByName("cat")
 	threadNumber, err := strconv.Atoi(req.params.ByName("thread"))
 	if err != nil {
@@ -119,10 +141,9 @@ func (server *Server) HandleWritePost(ctx context.Context, req *request, respond
 			return
 		}
 		respond(
-			http.StatusInternalServerError,
-			nil, "Sorry, an error occurred while saving your post",
+			http.StatusInternalServerError, nil, postFailMessage,
 		)
-		log.Printf("Failed to write post to db: %s", err)
+		log.Printf("Failed to save new post request: %s", err)
 		return
 	}
 
