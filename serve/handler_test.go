@@ -47,3 +47,23 @@ func TestGenHandler(t *testing.T) {
 		t.Fatalf("Unexpected response JSON field: %s", resJSON.Name)
 	}
 }
+
+func TestHandlerIP(t *testing.T) {
+	var tests = map[string]string{
+		"X-FORWARDED-FOR": "44.5.512334.5",
+		"X-REAL-IP":       "xxx-xx-xxx",
+	}
+
+	for header, ip := range tests {
+		forwardedReq := httptest.NewRequest("GET", "/", nil)
+		forwardedReq.Header.Set(header, ip)
+
+		recorder := httptest.NewRecorder()
+
+		genHandler(func(ctx context.Context, req *request, respond respondFunc) {
+			if req.ip != ip {
+				t.Fatalf("Expected request IP %s == %s", req.ip, ip)
+			}
+		})(recorder, forwardedReq, nil)
+	}
+}

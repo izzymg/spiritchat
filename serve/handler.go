@@ -14,6 +14,8 @@ type request struct {
 	params     httprouter.Params
 	rawRequest *http.Request
 	header     http.Header
+	// Favours: X-Forwarded-For > X-Real-IP -> Remote Addr
+	ip string
 }
 
 type respondFunc func(status int, jsonObj interface{}, message string)
@@ -22,12 +24,22 @@ type handlerFunc func(ctx context.Context, req *request, respond respondFunc)
 
 func genHandler(handler handlerFunc) httprouter.Handle {
 	return func(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
+		// Find the request IP
+		ip := req.Header.Get("X-FORWARDED-FOR")
+		if len(ip) == 0 {
+			ip = req.Header.Get("X-REAL-IP")
+			if len(ip) == 0 {
+				ip = req.RemoteAddr
+			}
+		}
+
 		handler(
 			req.Context(),
 			&request{
 				header:     req.Header,
 				params:     params,
 				rawRequest: req,
+				ip:         ip,
 			},
 			func(status int, jsonObj interface{}, message string) {
 				rw.WriteHeader(status)
