@@ -30,6 +30,10 @@ var InvalidContentLen = fmt.Sprintf(
 // ErrNotFound is a generic user-friendly not found message.
 var ErrNotFound = errors.New("That category or post does not exist")
 
+func getIPLockKey(ip string) string {
+	return ip + ":lock"
+}
+
 // Category contains JSON information describing a Category for posts.
 type Category struct {
 	Name string `json:"name"`
@@ -71,9 +75,16 @@ type ThreadView struct {
 
 // NewDatastore creates a new data store, creating a connection.
 func NewDatastore(ctx context.Context, pgURL string, redisURL string) (*Store, error) {
-	redisConn, err := redis.DialURL(redisURL)
-	if err != nil {
-		return nil, fmt.Errorf("redis connection failed: %w", err)
+	pool := &redis.Pool{
+		MaxActive: 10,
+		Dial: func() (redis.Conn, error) {
+			redisConn, err := redis.DialURL(redisURL)
+			if err != nil {
+				return nil, fmt.Errorf("redis connection failed: %w", err)
+			}
+			return redisConn, nil
+		},
+		IdleTimeout: 200 * time.Second,
 	}
 	pgConn, err := pgx.Connect(ctx, pgURL)
 	if err != nil {
@@ -81,20 +92,42 @@ func NewDatastore(ctx context.Context, pgURL string, redisURL string) (*Store, e
 	}
 	return &Store{
 		pgConn:    pgConn,
-		redisConn: redisConn,
+		redisPool: pool,
 	}, nil
 }
 
 // Store allows for writing and reading from the persistent data store.
 type Store struct {
 	pgConn    *pgx.Conn
-	redisConn redis.Conn
+	redisPool *redis.Pool
 }
 
 // Cleanup cleans the underlying connection to the data store.
 func (store *Store) Cleanup(ctx context.Context) error {
 	err := store.pgConn.Close(ctx)
-	err = store.redisConn.Close()
+	err = store.redisPool.Close()
+	return err
+}
+
+// IsRateLimited returns true if the given IP is being rate limited.
+func (store *Store) IsRateLimited(ip string) (bool, error) {
+	conn := store.redisPool.Get()
+	defer conn.Close()
+	exists, err := redis.Bool(conn.Do(
+		"EXISTS", getIPLockKey(ip),
+	))
+	if err != nil {
+		return false, fmt.Errorf("failed to look up ip rate limit: %w", err)
+	}
+	return exists, nil
+}
+
+// RateLimit marks IP as rate limited for n seconds.
+func (store *Store) RateLimit(ip string, seconds int) error {
+	conn := store.redisPool.Get()
+	defer conn.Close()
+	_, err := conn.Do("SET", getIPLockKey(ip), seconds)
+	_, err = conn.Do("EXPIRE", getIPLockKey(ip), seconds)
 	return err
 }
 
