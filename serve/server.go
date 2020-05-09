@@ -98,38 +98,11 @@ func (server *Server) HandleWritePost(ctx context.Context, req *request, respond
 		return
 	}
 
-	// If given thread number is not zero, look up OP's unique ID
-	parentUID := ""
-	if threadNumber != 0 {
-		op, err := server.store.GetPostByNumber(ctx, catName, threadNumber)
-		if err != nil {
-			if errors.Is(err, data.ErrNotFound) {
-				respond(
-					http.StatusNotFound,
-					nil, "Invalid thread number",
-				)
-				return
-			}
-			respond(
-				http.StatusInternalServerError,
-				nil, "Sorry, an error occurred while saving your post",
-			)
-			return
-		}
-		if op.IsReply() {
-			respond(
-				http.StatusNotFound,
-				nil, "No such found",
-			)
-			return
-		}
-		parentUID = op.UID
-	}
-
 	// Decode body and write post
-	var p data.UserPost
-	json.NewDecoder(req.rawRequest.Body).Decode(&p)
-	content, errMessage := data.CheckContent(p.Content)
+	userPost := &data.UserPost{}
+	json.NewDecoder(req.rawRequest.Body).Decode(userPost)
+
+	content, errMessage := data.CheckContent(userPost.Content)
 	if len(errMessage) > 0 {
 		respond(
 			http.StatusBadRequest,
@@ -137,33 +110,10 @@ func (server *Server) HandleWritePost(ctx context.Context, req *request, respond
 		)
 		return
 	}
+	userPost.Content = content
 
-	trans, err := server.store.Trans(ctx)
-	rollback := func() {
-		err := trans.Rollback(ctx)
-		if err != nil {
-			log.Printf("Failed to rollback transaction: %s", err)
-		}
-	}
+	err = server.store.WritePost(ctx, catName, threadNumber, userPost)
 	if err != nil {
-		rollback()
-		if err != nil {
-			log.Printf("Failed to rollback transaction: %s", err)
-		}
-		respond(
-			http.StatusInternalServerError,
-			nil, "Sorry, an error occurred while saving your post",
-		)
-		log.Printf("Failed to create post write transaction: %s", err)
-		return
-	}
-	err = trans.WritePost(ctx, &data.Post{
-		Content:   content,
-		Cat:       catName,
-		ParentUID: parentUID,
-	})
-	if err != nil {
-		rollback()
 		if errors.Is(err, data.ErrNotFound) {
 			respond(http.StatusBadRequest, nil, err.Error())
 			return
@@ -174,11 +124,6 @@ func (server *Server) HandleWritePost(ctx context.Context, req *request, respond
 		)
 		log.Printf("Failed to write post to db: %s", err)
 		return
-	}
-	err = trans.Commit(ctx)
-	if err != nil {
-		rollback()
-		log.Printf("Failed to commit post write: %s", err)
 	}
 
 	respond(http.StatusOK, ok{Message: "Post submitted"}, "")

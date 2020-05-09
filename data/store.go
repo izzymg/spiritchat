@@ -245,44 +245,35 @@ func (store *Store) GetCatView(ctx context.Context, catName string) (*CatView, e
 	}, nil
 }
 
-// Trans creates a new data store transaction, for write operations to the store.
-func (store *Store) Trans(ctx context.Context) (*Trans, error) {
-	tx, err := store.connection.Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to start db transaction: %w", err)
-	}
-	return &Trans{tx}, nil
-}
-
-// Trans represents a transaction within the data store.
-type Trans struct {
-	tx pgx.Tx
-}
-
-// Commit will push all write operations recorded to the data store.
-func (t *Trans) Commit(ctx context.Context) error {
-	return t.tx.Commit(ctx)
-}
-
-// Rollback will revert all write operations recorded to the data store.
-func (t *Trans) Rollback(ctx context.Context) error {
-	return t.tx.Rollback(ctx)
-}
-
 /*
 WritePost will record the writing of a post onto the transaction.
 Generates a unique ID for the post, and saves only its category, parent
-and content. */
-func (t *Trans) WritePost(ctx context.Context, p *Post) error {
+and content. May throw ErrNotFound. */
+func (store *Store) WritePost(ctx context.Context, catName string, threadNum int, p *UserPost) error {
+
+	opUID := ""
+	if threadNum != 0 {
+		op, err := store.GetPostByNumber(ctx, catName, threadNum)
+		if err != nil || op.IsReply() {
+			return ErrNotFound
+		}
+		opUID = op.UID
+	}
+
+	tx, err := store.connection.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to obtain tx for post write: %w", tx)
+	}
+	defer tx.Rollback(ctx)
 
 	// Write post procedure expects OP UID
 
-	_, err := t.tx.Exec(
+	_, err = tx.Exec(
 		ctx,
 		"CALL write_post($1, $2, $3, $4)",
 		generateUniqueID(),
-		p.Cat,
-		p.ParentUID,
+		catName,
+		opUID,
 		p.Content,
 	)
 
@@ -294,6 +285,10 @@ func (t *Trans) WritePost(ctx context.Context, p *Post) error {
 			return ErrNotFound
 		}
 		return fmt.Errorf("failed to execute post write: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit post write: %w", err)
 	}
 	return nil
 }
