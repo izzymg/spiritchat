@@ -16,17 +16,6 @@ import (
 // FKViolation is the SQL State error code for foreign-key violations.
 const fkViolation = "23503"
 
-const maxContentLen = 300
-
-const minContentLen = 2
-
-// InvalidContentLen is a message describing an invalid post content length.
-var InvalidContentLen = fmt.Sprintf(
-	"Content must be between %d and %d characters",
-	minContentLen,
-	maxContentLen,
-)
-
 // ErrNotFound is a generic user-friendly not found message.
 var ErrNotFound = errors.New("That category or post does not exist")
 
