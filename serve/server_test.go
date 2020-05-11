@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"spiritchat/config"
 	"spiritchat/data"
 	"testing"
@@ -15,38 +14,9 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// Returns false if integrations shouldn't be run.
-func ShouldRunIntegrations() bool {
-	if env, exists := os.LookupEnv(
-		"SPIRITTEST_INTEGRATIONS",
-	); !exists || env == "FALSE" || env == "0" {
-		return false
-	}
-	return true
-}
-
-// Returns false if integrations shouldn't be run, or true, and integration config.
-func GetIntegrationsConfig() (*config.Config, bool) {
-	if !ShouldRunIntegrations() {
-		return nil, false
-	}
-	pgURL := os.Getenv("SPIRITTEST_PG_URL")
-	redisURL := os.Getenv("SPIRITTEST_REDIS_URL")
-	addr := os.Getenv("SPIRITTEST_ADDR")
-	if len(pgURL) == 0 || len(redisURL) == 0 || len(addr) == 0 {
-		panic("SPIRITTEST_PG_URL or SPIRITTEST_REDIS_URL or SPIRITTEST_ADDR empty")
-	}
-
-	return &config.Config{
-		HTTPAddress: addr,
-		PGURL:       pgURL,
-		RedisURL:    redisURL,
-	}, true
-}
-
 // Integrations - run on fake DB
 func TestIntegration(t *testing.T) {
-	conf, shouldRun := GetIntegrationsConfig()
+	conf, shouldRun := config.GetIntegrationsConfig()
 	if !shouldRun {
 		t.Log("Skipping integration test...")
 		return

@@ -1,6 +1,7 @@
 package data
 
 import (
+	"spiritchat/config"
 	"testing"
 	"time"
 
@@ -9,6 +10,10 @@ import (
 
 // Integration test
 func TestRateLimiting(t *testing.T) {
+	if !config.ShouldRunIntegrations() {
+		t.Log("Skipping integration test...")
+		return
+	}
 	for i := 0; i < 10; i++ {
 		t.Run(string(i), func(t *testing.T) {
 			t.Parallel()
