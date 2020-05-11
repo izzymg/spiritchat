@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"spiritchat/config"
 	"spiritchat/data"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v4"
-	"golang.org/x/sync/errgroup"
 )
 
 // Integrations - run on fake DB
@@ -114,22 +115,18 @@ func TestIntegration(t *testing.T) {
 			t.Error(err)
 		}
 
+		client := &http.Client{
+			Timeout: time.Second * 5,
+		}
 		for i := 0; i < 50; i++ {
-			var g errgroup.Group
-
-			g.Go(func() error {
-				res, err := http.Post("http://"+conf.HTTPAddress+"/v1/"+catName+"/0", "application/JSON", bytes.NewReader(body))
-				if err != nil {
-					return fmt.Errorf("writeThread got unexpected http error: %w", err)
-				}
-				if res.StatusCode != 200 {
-					return fmt.Errorf("writeThread expected status code 200, got %d, request dump: %v", res.StatusCode, *res)
-				}
-				return nil
-			})
-
-			if err := g.Wait(); err != nil {
-				t.Error(err)
+			res, err := client.Post("http://"+conf.HTTPAddress+"/v1/"+catName+"/0", "application/JSON", bytes.NewReader(body))
+			if err != nil {
+				t.Errorf("writeThread got unexpected http error: %v", err)
+			}
+			io.Copy(ioutil.Discard, res.Body)
+			res.Body.Close()
+			if res.StatusCode != 200 {
+				t.Errorf("writeThread expected status code 200, got %d, request dump: %v", res.StatusCode, *res)
 			}
 		}
 	})
