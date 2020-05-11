@@ -66,7 +66,9 @@ type ThreadView struct {
 // NewDatastore creates a new data store, creating a connection.
 func NewDatastore(ctx context.Context, pgURL string, redisURL string, maxConns int32) (*Store, error) {
 	redisPool := &redis.Pool{
-		MaxActive: 10,
+		MaxActive: int(maxConns),
+		MaxIdle:   int(maxConns),
+		Wait:      true,
 		Dial: func() (redis.Conn, error) {
 			redisConn, err := redis.DialURL(redisURL)
 			if err != nil {
