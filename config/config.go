@@ -27,5 +27,3 @@ func ParseEnv() *Config {
 	}
 	return conf
 }
-
-// SpiritC
