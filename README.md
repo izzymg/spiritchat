@@ -39,6 +39,17 @@ docker run --name spiritchat \
 ```
 
 
+### Integration tests
+
+You'll need to set the env var `SPIRITTEST_INTEGRATIONS` to run integration tests. 
+
+They also use different environment variables to connect to the data stores so you run no risk of running them in prod. They setup and tear down tables.
+
+Use for Postgres, Redis, and HTTP respectively:
+
+`SPIRITTEST_PG_URL` `SPIRITTEST_REDIS_URL` `SPIRITTEST_ADDR`
+
+
 #### Design
 
 [Design docs](docs/design.md)
