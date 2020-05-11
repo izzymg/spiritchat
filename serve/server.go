@@ -139,7 +139,7 @@ func (server *Server) HandleWritePost(ctx context.Context, req *request, respond
 	err = server.store.WritePost(ctx, catName, threadNumber, userPost)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			respond(http.StatusBadRequest, nil, err.Error())
+			respond(http.StatusNotFound, nil, err.Error())
 			return
 		}
 		respond(
