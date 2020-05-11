@@ -3,40 +3,14 @@ package main
 import (
 	"context"
 	"log"
-	"os"
+	"spiritchat/config"
 	"spiritchat/data"
 	"spiritchat/serve"
 )
 
-type config struct {
-	HTTPAddress string
-	CORSAllow   string
-	PGURL       string
-	RedisURL    string
-}
-
-// Parse environment for configuration
-func parseEnv() config {
-	conf := config{
-		HTTPAddress: "0.0.0.0:3000",
-		CORSAllow:   "https://example.com",
-		PGURL:       os.Getenv("SPIRITCHAT_PG_URL"),
-		RedisURL:    os.Getenv("SPIRITCHAT_REDIS_URL"),
-	}
-	if addr, ok := os.LookupEnv("SPIRITCHAT_ADDRESS"); ok {
-		conf.HTTPAddress = addr
-	}
-
-	if allow, ok := os.LookupEnv("SPIRITCHAT_CORS_ALLOW"); ok {
-		conf.CORSAllow = allow
-	}
-	return conf
-}
-
-// SpiritChat entry point
 func main() {
 
-	conf := parseEnv()
+	conf := config.ParseEnv()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
