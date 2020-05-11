@@ -22,7 +22,7 @@ func TestIntegration(t *testing.T) {
 		return
 	}
 
-	store, err := data.NewDatastore(context.Background(), conf.PGURL, conf.RedisURL)
+	store, err := data.NewDatastore(context.Background(), conf.PGURL, conf.RedisURL, 1)
 	if err != nil {
 		t.Fatal(err)
 	}

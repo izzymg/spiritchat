@@ -10,6 +10,7 @@ import (
 	"github.com/gomodule/redigo/redis"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/rs/xid"
 )
 
@@ -63,8 +64,8 @@ type ThreadView struct {
 }
 
 // NewDatastore creates a new data store, creating a connection.
-func NewDatastore(ctx context.Context, pgURL string, redisURL string) (*Store, error) {
-	pool := &redis.Pool{
+func NewDatastore(ctx context.Context, pgURL string, redisURL string, maxConns int32) (*Store, error) {
+	redisPool := &redis.Pool{
 		MaxActive: 10,
 		Dial: func() (redis.Conn, error) {
 			redisConn, err := redis.DialURL(redisURL)
@@ -75,27 +76,34 @@ func NewDatastore(ctx context.Context, pgURL string, redisURL string) (*Store, e
 		},
 		IdleTimeout: 200 * time.Second,
 	}
-	pgConn, err := pgx.Connect(ctx, pgURL)
+
+	conf, err := pgxpool.ParseConfig(pgURL)
+	if err != nil {
+		return nil, fmt.Errorf("pg config parsing failed: %w", err)
+	}
+
+	conf.MaxConns = maxConns
+
+	pgPool, err := pgxpool.ConnectConfig(ctx, conf)
 	if err != nil {
 		return nil, fmt.Errorf("pg connection failed: %w", err)
 	}
 	return &Store{
-		pgConn:    pgConn,
-		redisPool: pool,
+		pgPool:    pgPool,
+		redisPool: redisPool,
 	}, nil
 }
 
 // Store allows for writing and reading from the persistent data store.
 type Store struct {
-	pgConn    *pgx.Conn
+	pgPool    *pgxpool.Pool
 	redisPool *redis.Pool
 }
 
 // Cleanup cleans the underlying connection to the data store.
 func (store *Store) Cleanup(ctx context.Context) error {
-	err := store.pgConn.Close(ctx)
-	err = store.redisPool.Close()
-	return err
+	store.pgPool.Close()
+	return store.redisPool.Close()
 }
 
 // IsRateLimited returns true if the given IP is being rate limited.
@@ -125,7 +133,7 @@ func (store *Store) RateLimit(ip string, seconds int) error {
 
 // GetCategories returns all categories.
 func (store *Store) GetCategories(ctx context.Context) ([]*Category, error) {
-	rows, err := store.pgConn.Query(
+	rows, err := store.pgPool.Query(
 		ctx,
 		"SELECT name FROM cats",
 	)
@@ -150,7 +158,7 @@ func (store *Store) GetCategories(ctx context.Context) ([]*Category, error) {
 GetPostByNumber returns a post in a category by its number.
 Will return ErrNotFound if no such post. */
 func (store *Store) GetPostByNumber(ctx context.Context, catName string, num int) (*Post, error) {
-	row := store.pgConn.QueryRow(
+	row := store.pgPool.QueryRow(
 		ctx,
 		"SELECT uid, num, cat, content, parent, created_at FROM posts WHERE cat = $1 AND num = $2",
 		catName,
@@ -191,7 +199,7 @@ func (store *Store) GetThreadView(ctx context.Context, catName string, threadNum
 		return nil, ErrNotFound
 	}
 
-	replyRows, err := store.pgConn.Query(
+	replyRows, err := store.pgPool.Query(
 		ctx,
 		"SELECT uid, num, cat, content, parent, created_at FROM posts WHERE parent = $1 ORDER BY num ASC",
 		op.UID,
@@ -227,7 +235,7 @@ func (store *Store) GetThreadView(ctx context.Context, catName string, threadNum
 GetCategory returns a single category. May return ErrNotFound if the given category
 name is invalid. */
 func (store *Store) GetCategory(ctx context.Context, catName string) (*Category, error) {
-	rows, err := store.pgConn.Query(
+	rows, err := store.pgPool.Query(
 		ctx,
 		"SELECT name FROM cats WHERE name = $1",
 		catName,
@@ -254,7 +262,7 @@ func (store *Store) GetCatView(ctx context.Context, catName string) (*CatView, e
 		return nil, err
 	}
 
-	rows, err := store.pgConn.Query(
+	rows, err := store.pgPool.Query(
 		ctx,
 		"SELECT uid, num, cat, content, created_at FROM posts WHERE cat = $1 AND parent IS NULL ORDER BY num ASC",
 		catName,
@@ -294,7 +302,7 @@ func (store *Store) WritePost(ctx context.Context, catName string, threadNum int
 		opUID = op.UID
 	}
 
-	tx, err := store.pgConn.Begin(ctx)
+	tx, err := store.pgPool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to obtain tx for post write: %w", err)
 	}
