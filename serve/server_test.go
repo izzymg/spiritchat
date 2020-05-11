@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"spiritchat/config"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v4"
+	"golang.org/x/sync/errgroup"
 )
 
 // Returns false if integrations shouldn't be run.
@@ -142,12 +144,23 @@ func TestIntegration(t *testing.T) {
 			t.Error(err)
 		}
 
-		for i := 0; i < 3; i++ {
-			res, err := http.Post("http://"+conf.HTTPAddress+"/v1/"+catName+"/0", "application/JSON", bytes.NewReader(body))
-			if err != nil {
+		for i := 0; i < 50; i++ {
+			var g errgroup.Group
+
+			g.Go(func() error {
+				res, err := http.Post("http://"+conf.HTTPAddress+"/v1/"+catName+"/0", "application/JSON", bytes.NewReader(body))
+				if err != nil {
+					return fmt.Errorf("writeThread got unexpected http error: %w", err)
+				}
+				if res.StatusCode != 200 {
+					return fmt.Errorf("writeThread expected status code 200, got %d, request dump: %v", res.StatusCode, *res)
+				}
+				return nil
+			})
+
+			if err := g.Wait(); err != nil {
 				t.Error(err)
 			}
-			t.Logf("Write thread got status: %d", res.StatusCode)
 		}
 	})
 
