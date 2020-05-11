@@ -1,3 +1,5 @@
+ALTER TABLE cats ADD COLUMN post_count integer NOT NULL DEFAULT 1;
+
 -- If the post has a parent, check the parent exists, and only in the same category.
 CREATE OR REPLACE FUNCTION check_reply() RETURNS trigger AS $check_reply$
     BEGIN
@@ -25,31 +27,3 @@ CREATE OR REPLACE PROCEDURE write_post(TEXT, TEXT, TEXT, TEXT) AS $write_post$
         UPDATE cats SET post_count = post_count + 1;
     END
 $write_post$ LANGUAGE plpgsql;
-
-
--- Categories
-CREATE TABLE cats (
-    name                    text,
-    post_count              integer NOT NULL DEFAULT 1,
-    CONSTRAINT cat_name     PRIMARY KEY(name)
-);
-
--- Posts
-CREATE TABLE posts (
-    uid                     text,
-    num                     integer NOT NULL DEFAULT 0,
-    cat                     text NOT NULL,
-    parent                  text,
-    content                 text NOT NULL,
-    created_at              timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    --- Post number should be unique to the category
-    UNIQUE                  (cat, num),
-    --- Post UID is the primary key
-    CONSTRAINT post_uid     PRIMARY KEY (uid),
-    --- Post must belong to a valid category
-    FOREIGN KEY (cat)       REFERENCES cats (name)         
-);
-
--- Check replies before submission.
-CREATE TRIGGER check_reply BEFORE INSERT OR UPDATE ON posts
-    FOR EACH ROW EXECUTE PROCEDURE check_reply();

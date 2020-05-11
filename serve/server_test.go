@@ -118,7 +118,7 @@ func TestIntegration(t *testing.T) {
 		client := &http.Client{
 			Timeout: time.Second * 5,
 		}
-		for i := 0; i < 50; i++ {
+		for i := 0; i < 300; i++ {
 			res, err := client.Post("http://"+conf.HTTPAddress+"/v1/"+catName+"/0", "application/JSON", bytes.NewReader(body))
 			if err != nil {
 				t.Errorf("writeThread got unexpected http error: %v", err)
