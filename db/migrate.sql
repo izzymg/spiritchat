@@ -49,5 +49,5 @@ CREATE TABLE posts (
 );
 
 -- Check reply should happen before submission.
-CREATE OR REPLACE TRIGGER check_reply BEFORE INSERT OR UPDATE ON posts
+CREATE TRIGGER check_reply BEFORE INSERT OR UPDATE ON posts
     FOR EACH ROW EXECUTE PROCEDURE check_reply();
