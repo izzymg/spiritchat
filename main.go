@@ -23,7 +23,11 @@ func main() {
 	}
 	defer store.Cleanup(ctx)
 
-	server := serve.NewServer(store, conf.HTTPAddress, conf.CORSAllow)
+	server := serve.NewServer(store, serve.ServerOptions{
+		Address:             conf.HTTPAddress,
+		CorsOriginAllow:     conf.CORSAllow,
+		PostCooldownSeconds: 30,
+	})
 	log.Printf("Starting server on %s, allowing %s CORS", conf.HTTPAddress, conf.CORSAllow)
 	log.Println(server.Listen(ctx))
 }

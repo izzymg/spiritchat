@@ -113,6 +113,9 @@ func (store *Store) IsRateLimited(ip string) (bool, error) {
 
 // RateLimit marks IP as rate limited for n seconds.
 func (store *Store) RateLimit(ip string, seconds int) error {
+	if seconds < 1 {
+		return nil
+	}
 	conn := store.redisPool.Get()
 	defer conn.Close()
 	_, err := conn.Do("SET", getIPLockKey(ip), seconds)

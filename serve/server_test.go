@@ -113,7 +113,12 @@ func TestIntegration(t *testing.T) {
 		}
 	}
 
-	server := NewServer(store, conf.HTTPAddress, "*")
+	// Post cooldown is disabled
+	server := NewServer(store, ServerOptions{
+		Address:             conf.HTTPAddress,
+		CorsOriginAllow:     "*",
+		PostCooldownSeconds: 0,
+	})
 	go func() {
 		if err := server.Listen(context.Background()); err != nil && err != http.ErrServerClosed {
 			panic(err)

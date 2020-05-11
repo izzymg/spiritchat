@@ -14,16 +14,14 @@ import (
 	"github.com/julienschmidt/httprouter"
 )
 
-const postLimitSeconds = 30
 const postFailMessage = "Sorry, an error occurred while saving your post"
 const genericFailMessage = "Sorry, an error occurred while handling your request."
 
-var postLimitErrorMessage = fmt.Sprintf("You must wait %d seconds between posts", postLimitSeconds)
-
 // Server stub todo
 type Server struct {
-	store      *data.Store
-	httpServer http.Server
+	PostCooldownSeconds int
+	store               *data.Store
+	httpServer          http.Server
 }
 
 // Listen starts the server listening process until the context is cancelled (blocks).
@@ -100,10 +98,14 @@ func (server *Server) HandleWritePost(ctx context.Context, req *request, respond
 		return
 	}
 	if isLimited {
-		respond(http.StatusBadRequest, nil, postLimitErrorMessage)
+		respond(http.StatusBadRequest, nil,
+			fmt.Sprintf(
+				"You must wait %d seconds between posts", server.PostCooldownSeconds,
+			),
+		)
 		return
 	}
-	err = server.store.RateLimit(req.ip, postLimitSeconds)
+	err = server.store.RateLimit(req.ip, server.PostCooldownSeconds)
 	if err != nil {
 		respond(http.StatusInternalServerError, nil, postFailMessage)
 		log.Printf("Failed to rate limit request: %s", err)
@@ -167,24 +169,31 @@ func middlewareCORS(hand httprouter.Handle, allowedOrigin string) httprouter.Han
 	}
 }
 
+// ServerOptions configure the server.
+type ServerOptions struct {
+	Address             string
+	CorsOriginAllow     string
+	PostCooldownSeconds int
+}
+
 // NewServer stub todo
-func NewServer(store *data.Store, address string, corsAllow string) *Server {
+func NewServer(store *data.Store, opts ServerOptions) *Server {
 
 	server := &Server{
 		store: store,
 		httpServer: http.Server{
-			Addr:              address,
+			Addr:              opts.Address,
 			IdleTimeout:       time.Minute * 10,
 			ReadHeaderTimeout: time.Second * 10,
 		},
 	}
 
 	router := httprouter.New()
-	router.GlobalOPTIONS = http.HandlerFunc(handleCORSPreflight(corsAllow))
-	router.GET("/v1", middlewareCORS(genHandler(server.HandleGetCategories), corsAllow))
-	router.GET("/v1/:cat", middlewareCORS(genHandler(server.HandleGetCatView), corsAllow))
-	router.POST("/v1/:cat/:thread", middlewareCORS(genHandler(server.HandleWritePost), corsAllow))
-	router.GET("/v1/:cat/:thread", middlewareCORS(genHandler(server.HandleGetThreadView), corsAllow))
+	router.GlobalOPTIONS = http.HandlerFunc(handleCORSPreflight(opts.CorsOriginAllow))
+	router.GET("/v1", middlewareCORS(genHandler(server.HandleGetCategories), opts.CorsOriginAllow))
+	router.GET("/v1/:cat", middlewareCORS(genHandler(server.HandleGetCatView), opts.CorsOriginAllow))
+	router.POST("/v1/:cat/:thread", middlewareCORS(genHandler(server.HandleWritePost), opts.CorsOriginAllow))
+	router.GET("/v1/:cat/:thread", middlewareCORS(genHandler(server.HandleGetThreadView), opts.CorsOriginAllow))
 
 	server.httpServer.Handler = router
 	return server
