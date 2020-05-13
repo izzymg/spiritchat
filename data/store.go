@@ -133,6 +133,20 @@ func (store *Store) RateLimit(ip string, seconds int) error {
 	return err
 }
 
+// GetThreadCount returns the number of threads in a category.
+func (store *Store) GetThreadCount(ctx context.Context, catName string) (int, error) {
+	var count int
+	err := store.pgPool.QueryRow(
+		ctx,
+		"SELECT COUNT (*) FROM posts WHERE cat = $1 AND parent IS NULL",
+		catName,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query thread count on %s, %w", catName, err)
+	}
+	return count, nil
+}
+
 // GetCategories returns all categories.
 func (store *Store) GetCategories(ctx context.Context) ([]*Category, error) {
 	rows, err := store.pgPool.Query(
