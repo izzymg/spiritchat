@@ -2,6 +2,8 @@
 
 SpiritChat is a chan-style imageboard/BBS written in Golang.
 
+Frontend (Vue.JS): https://github.com/izzymg/spiritclient
+
 ### Deploying
 
 Using Docker is the easiest way to deploy SpiritChat.
