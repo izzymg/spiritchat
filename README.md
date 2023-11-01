@@ -6,12 +6,15 @@ Frontend (Vue.JS): https://github.com/izzymg/spiritclient
 
 ### Usage
 `spirit` - start spirit
+
 `spirit migrate up` - apply migrations up
+
 `spirit migrate down` - drops everything
 
 ### devcontainer
 
-Developed inside vscode devcontainer with Redis & Postgres
+Developed inside vscode devcontainer with Redis & Postgres.
+
 Use `launch.json` to run, and run up/down migration tests
 
 ### Environment variables
