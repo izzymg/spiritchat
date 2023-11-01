@@ -14,11 +14,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
-// FKViolation is the SQL State error code for foreign-key violations.
-const fkViolation = "23503"
-
-// ErrNotFound is a generic user-friendly not found message.
-var ErrNotFound = errors.New("that category or post does not exist")
+var ErrNotFound = errors.New("not found")
 
 func getIPLockKey(ip string) string {
 	return ip + ":lock"
@@ -316,7 +312,7 @@ func (store *Store) GetCatView(ctx context.Context, catName string) (*CatView, e
 
 	rows, err := store.pgPool.Query(
 		ctx,
-		"SELECT num, cat, content, created_at FROM posts WHERE cat = $1 AND parent IS NULL ORDER BY num ASC",
+		"SELECT num, cat, content, created_at FROM posts WHERE cat = $1 AND parent = 0 ORDER BY num ASC",
 		catName,
 	)
 	if err != nil {
@@ -357,7 +353,7 @@ func (store *Store) WritePost(ctx context.Context, catName string, parentThreadN
 	// Assumes all FK violations are invalid post categories.
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == fkViolation {
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
 			return ErrNotFound
 		}
 		return fmt.Errorf("failed to execute post write: %w", err)

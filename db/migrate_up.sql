@@ -2,8 +2,8 @@
 CREATE OR REPLACE FUNCTION check_reply() RETURNS trigger AS $check_reply$
     BEGIN
         IF NOT NEW.parent = 0 THEN
-            IF NOT EXISTS (SELECT FROM posts WHERE num = NEW.num AND cat = NEW.cat) THEN
-                RAISE EXCEPTION 'Reply does not have a corresponding parent';
+            IF NOT EXISTS (SELECT FROM posts WHERE num = NEW.parent AND cat = NEW.cat) THEN
+                RAISE EXCEPTION 'Nonexistent parent --> % on %', NEW.parent, NEW.cat USING ERRCODE = 23503;
             END IF;
         END IF;
         RETURN NEW;
@@ -20,6 +20,9 @@ CREATE OR REPLACE PROCEDURE write_post(TEXT, INTEGER, TEXT) AS $write_post$
         post_num INTEGER;
     BEGIN
         SELECT post_count INTO post_num FROM cats WHERE name = $1 FOR UPDATE;
+        IF post_num IS NULL THEN
+            RAISE EXCEPTION 'Nonexistent category --> %', $1 USING ERRCODE = 23503;
+        END IF;
         INSERT INTO posts (cat, parent, content, num) VALUES (
             $1, $2, $3, post_num
         );

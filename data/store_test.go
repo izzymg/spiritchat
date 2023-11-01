@@ -2,12 +2,13 @@ package data
 
 import (
 	"context"
+	"errors"
 	"spiritchat/config"
 	"sync"
 	"testing"
 )
 
-func TestConcurrentThreadWrites(t *testing.T) {
+func TestIntegrations(t *testing.T) {
 	shouldRun, store, err := getIntegrationTestSetup()
 	if err != nil {
 		t.Fatalf("integration test setup failure: %v", err)
@@ -20,16 +21,16 @@ func TestConcurrentThreadWrites(t *testing.T) {
 	ctx := context.Background()
 	defer store.Cleanup(ctx)
 
-	tests := map[string]int{
-		"test-1": 45,
-		"test-2": 22,
-		"test-3": 10,
+	integrationTests := map[string]func(context.Context, *Store) func(t *testing.T){
+		"Concurrent Thread Writes": integration_ConcurrentThreadWrites,
+		"Post writes":              integration_WritePosts,
+		"Get Category View":        integration_GetCatView,
 	}
 
-	createTestCategories(ctx, store, tests)
-	defer removeTestCategories(ctx, store, tests)
+	for name, fn := range integrationTests {
+		t.Run(name, fn(ctx, store))
+	}
 
-	t.Run("Concurent thread writes", concurrentThreadWriteTest(ctx, tests, store))
 }
 
 // Returns whether integrations should run, and the given store if so.
@@ -49,6 +50,112 @@ func getIntegrationTestSetup() (bool, *Store, error) {
 	return true, store, nil
 }
 
+func integration_GetCatView(ctx context.Context, store *Store) func(t *testing.T) {
+	return func(t *testing.T) {
+
+		testCategories := []string{"test-catview"}
+		threadCount := 5
+
+		// store a category
+		err := createTestCategories(ctx, store, testCategories)
+		if err != nil {
+			t.Error(err)
+		}
+		defer removeTestCategories(ctx, store, testCategories)
+
+		// write a thread into the category
+		for i := 0; i < threadCount; i++ {
+			err = store.WritePost(ctx, testCategories[0], 0, createTestUserPost())
+			if err != nil {
+				t.Error(err)
+			}
+		}
+
+		// write a reply to that post
+		err = store.WritePost(ctx, testCategories[0], 1, createTestUserPost())
+		if err != nil {
+			t.Error(err)
+		}
+
+		// getcatview should return the category, the post, but no replies
+		view, err := store.GetCatView(ctx, testCategories[0])
+		if err != nil {
+			t.Error(err)
+		}
+		if view == nil || view.Category == nil {
+			t.Error("got nil category")
+		}
+		if len(view.Threads) != threadCount {
+			t.Errorf("expected %d threads, got %d", threadCount, len(view.Threads))
+		}
+		if view.Category.Name != testCategories[0] {
+			t.Errorf("expected category name %s, got %s: ", testCategories[0], view.Category.Name)
+		}
+	}
+}
+
+func integration_ConcurrentThreadWrites(ctx context.Context, store *Store) func(t *testing.T) {
+	return func(t *testing.T) {
+		categoryThreadCountMap := map[string]int{
+			"test-1": 45,
+			"test-2": 22,
+			"test-3": 10,
+		}
+		categoryNames := []string{"test-1", "test-2", "test-3"}
+
+		err := createTestCategories(ctx, store, categoryNames)
+		if err != nil {
+			t.Error(err)
+		}
+		defer removeTestCategories(ctx, store, categoryNames)
+
+		t.Run("Concurent thread writes", concurrentThreadWriteTest(ctx, store, categoryThreadCountMap))
+	}
+}
+
+/*
+*
+Test writing valid & invalid posts
+*/
+func integration_WritePosts(ctx context.Context, datastore *Store) func(t *testing.T) {
+	return func(t *testing.T) {
+		t.Run("invalid category", func(t *testing.T) {
+			err := datastore.WritePost(ctx, "invalid-category", 0, createTestUserPost())
+			if err == nil {
+				t.Errorf("expected writepost error, got: %v", err)
+			}
+			if !errors.Is(err, ErrNotFound) {
+				t.Errorf("expected an ErrNotFound from writepost, got: %v", err)
+			}
+		})
+
+		t.Run("valid category, valid thread", func(t *testing.T) {
+			testCategories := []string{"test-cat"}
+			err := createTestCategories(ctx, datastore, testCategories)
+			if err != nil {
+				t.Error(err)
+			}
+			defer removeTestCategories(ctx, datastore, testCategories)
+
+			err = datastore.WritePost(ctx, testCategories[0], 0, createTestUserPost())
+			if err != nil {
+				t.Errorf("expected no error, got: %v", err)
+			}
+		})
+
+		t.Run("valid category, invalid parent post", func(t *testing.T) {
+			testCategories := []string{"test-cat"}
+			createTestCategories(ctx, datastore, testCategories)
+			defer removeTestCategories(ctx, datastore, testCategories)
+
+			err := datastore.WritePost(ctx, testCategories[0], 5, createTestUserPost())
+			if err == nil || !errors.Is(err, ErrNotFound) {
+				t.Errorf("expected ErrNotFound, got: %v", err)
+			}
+		})
+	}
+}
+
 // Creates an empty test user post.
 func createTestUserPost() *UserPost {
 	return &UserPost{
@@ -56,8 +163,8 @@ func createTestUserPost() *UserPost {
 	}
 }
 
-func createTestCategories(ctx context.Context, datastore *Store, tests map[string]int) error {
-	for categoryName := range tests {
+func createTestCategories(ctx context.Context, datastore *Store, categoryNames []string) error {
+	for _, categoryName := range categoryNames {
 		err := datastore.WriteCategory(ctx, categoryName)
 		if err != nil {
 			return err
@@ -66,8 +173,8 @@ func createTestCategories(ctx context.Context, datastore *Store, tests map[strin
 	return nil
 }
 
-func removeTestCategories(ctx context.Context, datastore *Store, tests map[string]int) error {
-	for categoryName := range tests {
+func removeTestCategories(ctx context.Context, datastore *Store, categoryNames []string) error {
+	for _, categoryName := range categoryNames {
 		_, err := datastore.RemoveCategory(ctx, categoryName)
 		if err != nil {
 			return err
@@ -80,7 +187,7 @@ func removeTestCategories(ctx context.Context, datastore *Store, tests map[strin
 Takes a map of category names and their number of threads to create.
 Creates all categories, and then writes n threads to each category concurrently.
 */
-func concurrentThreadWriteTest(ctx context.Context, tests map[string]int, datastore *Store) func(t *testing.T) {
+func concurrentThreadWriteTest(ctx context.Context, datastore *Store, tests map[string]int) func(t *testing.T) {
 	return func(t *testing.T) {
 		for categoryName, threadCount := range tests {
 			testUserPost := createTestUserPost()

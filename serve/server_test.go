@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v4"
 )
 
-// Integrations - run on fake DB
+// Integrations
 func TestIntegration(t *testing.T) {
 	conf, shouldRun := config.GetIntegrationsConfig()
 	if !shouldRun {

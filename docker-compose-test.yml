@@ -1,0 +1,21 @@
+version: '2'
+
+services:
+
+  unit:
+    image: golang:latest
+    volumes:
+      - .:/opt/spirit
+    working_dir: /opt/spirit
+    command: bash -c "pwd && go get -d -v && go run . migrate up && go test --cover -v ./... && go run . migrate down && go build -buildvcs=false -v -o spiritchat"
+    env_file:
+      - .env.test
+
+  postgres:
+    extends:
+      file: docker-compose.yml
+      service: postgres
+  redis:
+    extends:
+      file: docker-compose.yml
+      service: redis
