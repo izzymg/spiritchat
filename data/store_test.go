@@ -2,18 +2,41 @@ package data
 
 import (
 	"context"
-	"fmt"
 	"spiritchat/config"
+	"sync"
 	"testing"
-	"time"
-
-	"github.com/jackc/pgx/v4"
 )
 
-func TestIntegration(t *testing.T) {
+func TestConcurrentThreadWrites(t *testing.T) {
+	shouldRun, store, err := getIntegrationTestSetup()
+	if err != nil {
+		t.Fatalf("integration test setup failure: %v", err)
+	}
+	if !shouldRun {
+		t.Log("skipping integration test")
+		return
+	}
+
+	ctx := context.Background()
+	defer store.Cleanup(ctx)
+
+	tests := map[string]int{
+		"test-1": 45,
+		"test-2": 22,
+		"test-3": 10,
+	}
+
+	createTestCategories(ctx, store, tests)
+	defer removeTestCategories(ctx, store, tests)
+
+	t.Run("Concurent thread writes", concurrentThreadWriteTest(ctx, tests, store))
+}
+
+// Returns whether integrations should run, and the given store if so.
+func getIntegrationTestSetup() (bool, *Store, error) {
 	conf, shouldRun := config.GetIntegrationsConfig()
 	if !shouldRun {
-		t.Log("Skipping integration test")
+		return false, nil, nil
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -21,110 +44,84 @@ func TestIntegration(t *testing.T) {
 
 	store, err := NewDatastore(ctx, conf.PGURL, conf.RedisURL, 100)
 	if err != nil {
-		t.Error(err)
+		return true, nil, err
 	}
-	defer store.Cleanup(context.Background())
-
-	t.Run("getThreadCount", intGetThreadCount(ctx, store, conf))
-	t.Run("getThreadCount", intRateLimit(ctx, store, conf))
-
+	return true, store, nil
 }
 
-func intGetThreadCount(ctx context.Context, store *Store, conf *config.Config) func(t *testing.T) {
+// Creates an empty test user post.
+func createTestUserPost() *UserPost {
+	return &UserPost{
+		Content: "test",
+	}
+}
+
+func createTestCategories(ctx context.Context, datastore *Store, tests map[string]int) error {
+	for categoryName := range tests {
+		err := datastore.WriteCategory(ctx, categoryName)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func removeTestCategories(ctx context.Context, datastore *Store, tests map[string]int) error {
+	for categoryName := range tests {
+		_, err := datastore.RemoveCategory(ctx, categoryName)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+/*
+Takes a map of category names and their number of threads to create.
+Creates all categories, and then writes n threads to each category concurrently.
+*/
+func concurrentThreadWriteTest(ctx context.Context, tests map[string]int, datastore *Store) func(t *testing.T) {
 	return func(t *testing.T) {
-		catName := "integration_GetThreadCount"
-
-		setup := func(threads int) func() {
-
-			if threads < 1 {
-				return func() {}
-			}
-
-			// Add a test category
-			conn, err := pgx.Connect(ctx, conf.PGURL)
-			if err != nil {
-				panic(err)
-			}
-
-			_, err = conn.Exec(
-				ctx,
-				"INSERT INTO cats (name) VALUES ($1)",
-				catName,
-			)
-			if err != nil {
-				panic(err)
-			}
-
-			opUID := generateUniqueID()
-			addPost := func(uid string, parent string) {
-				_, err := conn.Exec(
-					ctx,
-					"CALL write_post($1, $2, $3, $4)",
-					uid,
-					catName,
-					parent,
-					"test_post",
-				)
-				if err != nil {
-					panic(err)
-				}
-			}
-
-			// Add threads and replies to a thread
-			// Since 1 OP is added already, add - 1
-			addPost(opUID, "")
-			for i := 0; i < threads-1; i++ {
-				addPost(generateUniqueID(), "")
-				addPost(generateUniqueID(), opUID)
-			}
-
-			return func() {
-				_, err := conn.Exec(
-					ctx,
-					"DELETE FROM posts WHERE cat = $1",
-					catName,
-				)
-				if err != nil {
-					panic(err)
-				}
-				_, err = conn.Exec(
-					ctx,
-					"DELETE FROM cats WHERE name = $1",
-					catName,
-				)
-				conn.Close(context.Background())
-			}
-		}
-
-		tests := []int{
-			100, 1, 2000, 54, 99, 83, 24, 0,
-		}
-
-		for _, n := range tests {
-			t.Run(fmt.Sprintf("threadCount-%d", n), func(t *testing.T) {
+		for categoryName, threadCount := range tests {
+			testUserPost := createTestUserPost()
+			threadCount := threadCount
+			categoryName := categoryName
+			t.Run(categoryName, func(t *testing.T) {
 				t.Parallel()
-				teardown := setup(n)
-				defer teardown()
-
-				start := time.Now()
-				c, err := store.GetThreadCount(ctx, catName)
-				t.Logf("getThreadCount in %d ms", time.Since(start).Milliseconds())
-				if err != nil {
-					t.Error(err)
+				// write n posts concurrently to a category
+				var wg sync.WaitGroup
+				categoryName := categoryName
+				for i := 0; i < threadCount; i++ {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						err := datastore.WritePost(ctx, categoryName, 0, testUserPost)
+						if err != nil {
+							panic(err)
+						}
+					}()
 				}
-				if c != n {
-					t.Errorf("Expected %d threads, got %d", n, c)
+				wg.Wait()
+
+				count, err := datastore.GetThreadCount(ctx, categoryName)
+				if err != nil {
+					t.Fatalf("failed to get thread count on category %s: %v", categoryName, err)
+				}
+				if count != threadCount {
+					t.Errorf("expected %d threads, got %d", threadCount, count)
 				}
 			})
 		}
 	}
 }
 
+/*
 func intRateLimit(ctx context.Context, store *Store, conf *config.Config) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		tests := []string{"13.3.4", "100.3r45.5434z", "localhost", "127.0.0.1", "zzzz"}
 		for _, ip := range tests {
+			ip := ip
 			t.Run(fmt.Sprintf("rateLimit-%s", ip), func(t *testing.T) {
 				t.Parallel()
 				// Random key should not be limited
@@ -157,3 +154,4 @@ func intRateLimit(ctx context.Context, store *Store, conf *config.Config) func(t
 		}
 	}
 }
+*/

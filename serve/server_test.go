@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"spiritchat/config"
 	"spiritchat/data"
@@ -123,7 +122,7 @@ func TestIntegration(t *testing.T) {
 			if err != nil {
 				t.Errorf("writeThread got unexpected http error: %v", err)
 			}
-			io.Copy(ioutil.Discard, res.Body)
+			io.Copy(io.Discard, res.Body)
 			res.Body.Close()
 			if res.StatusCode != 200 {
 				t.Errorf("writeThread expected status code 200, got %d, request dump: %v", res.StatusCode, *res)

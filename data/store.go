@@ -5,20 +5,20 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/rs/xid"
 )
 
 // FKViolation is the SQL State error code for foreign-key violations.
 const fkViolation = "23503"
 
 // ErrNotFound is a generic user-friendly not found message.
-var ErrNotFound = errors.New("That category or post does not exist")
+var ErrNotFound = errors.New("that category or post does not exist")
 
 func getIPLockKey(ip string) string {
 	return ip + ":lock"
@@ -31,7 +31,6 @@ type Category struct {
 
 // Post contains JSON information describing a thread, or reply to a thread.
 type Post struct {
-	UID       string    `json:"-"`
 	Num       int       `json:"num"`
 	Cat       string    `json:"cat"`
 	ParentUID string    `json:"-"`
@@ -57,7 +56,8 @@ type CatView struct {
 
 /*
 ThreadView contains JSON information about all
-the posts in a thread, and the category its on. */
+the posts in a thread, and the category its on.
+*/
 type ThreadView struct {
 	Category *Category `json:"category"`
 	Posts    []*Post   `json:"posts"`
@@ -129,8 +129,40 @@ func (store *Store) RateLimit(ip string, seconds int) error {
 	conn := store.redisPool.Get()
 	defer conn.Close()
 	_, err := conn.Do("SET", getIPLockKey(ip), seconds)
+	if err != nil {
+		return err
+	}
 	_, err = conn.Do("EXPIRE", getIPLockKey(ip), seconds)
 	return err
+}
+
+// WriteCategory adds a new category to the database.
+func (store *Store) WriteCategory(ctx context.Context, catName string) error {
+	_, err := store.pgPool.Exec(ctx, "INSERT INTO cats (name) VALUES ($1)", catName)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+/*
+RemoveCategory removes ALL posts under category catName and removes the category.
+Returns the number of rows affected (1 + number of removed posts).
+*/
+func (store *Store) RemoveCategory(ctx context.Context, catName string) (int64, error) {
+	var affected int64
+
+	tag, err := store.pgPool.Exec(ctx, "DELETE FROM posts WHERE cat = $1", catName)
+	if err != nil {
+		return affected, err
+	}
+	affected = tag.RowsAffected()
+
+	tag, err = store.pgPool.Exec(ctx, "DELETE FROM cats WHERE name = $1", catName)
+	if err != nil {
+		return affected, err
+	}
+	return affected + tag.RowsAffected(), nil
 }
 
 // GetThreadCount returns the number of threads in a category.
@@ -138,7 +170,7 @@ func (store *Store) GetThreadCount(ctx context.Context, catName string) (int, er
 	var count int
 	err := store.pgPool.QueryRow(
 		ctx,
-		"SELECT COUNT (*) FROM posts WHERE cat = $1 AND parent IS NULL",
+		"SELECT COUNT (*) FROM posts WHERE cat = $1 AND parent = 0",
 		catName,
 	).Scan(&count)
 	if err != nil {
@@ -172,18 +204,19 @@ func (store *Store) GetCategories(ctx context.Context) ([]*Category, error) {
 
 /*
 GetPostByNumber returns a post in a category by its number.
-Will return ErrNotFound if no such post. */
+Will return ErrNotFound if no such post.
+*/
 func (store *Store) GetPostByNumber(ctx context.Context, catName string, num int) (*Post, error) {
 	row := store.pgPool.QueryRow(
 		ctx,
-		"SELECT uid, num, cat, content, parent, created_at FROM posts WHERE cat = $1 AND num = $2",
+		"SELECT num, cat, content, parent, created_at FROM posts WHERE cat = $1 AND num = $2",
 		catName,
 		num,
 	)
 
 	var p Post
 	var parent sql.NullString
-	err := row.Scan(&p.UID, &p.Num, &p.Cat, &p.Content, &parent, &p.CreatedAt)
+	err := row.Scan(&p.Num, &p.Cat, &p.Content, &parent, &p.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -197,7 +230,8 @@ func (store *Store) GetPostByNumber(ctx context.Context, catName string, num int
 /*
 GetThreadView returns all the posts in a thread, and the category they're on.
 May return ErrNotFound if the requested thread is not an OP thread, or the category
-is invalid */
+is invalid
+*/
 func (store *Store) GetThreadView(ctx context.Context, catName string, threadNum int) (*ThreadView, error) {
 
 	// Find the category, ensure it's valid
@@ -217,8 +251,8 @@ func (store *Store) GetThreadView(ctx context.Context, catName string, threadNum
 
 	replyRows, err := store.pgPool.Query(
 		ctx,
-		"SELECT uid, num, cat, content, parent, created_at FROM posts WHERE parent = $1 ORDER BY num ASC",
-		op.UID,
+		"SELECT num, cat, content, parent, created_at FROM posts WHERE parent = $1 ORDER BY num ASC",
+		threadNum,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query thread replies: %w", err)
@@ -230,7 +264,7 @@ func (store *Store) GetThreadView(ctx context.Context, catName string, threadNum
 	for replyRows.Next() {
 		post := &Post{}
 		var parent sql.NullString
-		err := replyRows.Scan(&post.UID, &post.Num, &post.Cat, &post.Content, &parent, &post.CreatedAt)
+		err := replyRows.Scan(&post.Num, &post.Cat, &post.Content, &parent, &post.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse thread reply: %w", err)
 		}
@@ -249,7 +283,8 @@ func (store *Store) GetThreadView(ctx context.Context, catName string, threadNum
 
 /*
 GetCategory returns a single category. May return ErrNotFound if the given category
-name is invalid. */
+name is invalid.
+*/
 func (store *Store) GetCategory(ctx context.Context, catName string) (*Category, error) {
 	rows, err := store.pgPool.Query(
 		ctx,
@@ -271,7 +306,8 @@ func (store *Store) GetCategory(ctx context.Context, catName string) (*Category,
 
 /*
 GetCatView returns information about a category, and all the threads on it.
-May return an ErrNotFound if the given category name is invalid. */
+May return an ErrNotFound if the given category name is invalid.
+*/
 func (store *Store) GetCatView(ctx context.Context, catName string) (*CatView, error) {
 	cat, err := store.GetCategory(ctx, catName)
 	if err != nil {
@@ -280,7 +316,7 @@ func (store *Store) GetCatView(ctx context.Context, catName string) (*CatView, e
 
 	rows, err := store.pgPool.Query(
 		ctx,
-		"SELECT uid, num, cat, content, created_at FROM posts WHERE cat = $1 AND parent IS NULL ORDER BY num ASC",
+		"SELECT num, cat, content, created_at FROM posts WHERE cat = $1 AND parent IS NULL ORDER BY num ASC",
 		catName,
 	)
 	if err != nil {
@@ -291,7 +327,7 @@ func (store *Store) GetCatView(ctx context.Context, catName string) (*CatView, e
 	var posts []*Post
 	for rows.Next() {
 		post := &Post{}
-		err := rows.Scan(&post.UID, &post.Num, &post.Cat, &post.Content, &post.CreatedAt)
+		err := rows.Scan(&post.Num, &post.Cat, &post.Content, &post.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse a queried category view: %w", err)
 		}
@@ -304,34 +340,16 @@ func (store *Store) GetCatView(ctx context.Context, catName string) (*CatView, e
 }
 
 /*
-WritePost will record the writing of a post onto the transaction.
-Generates a unique ID for the post, and saves only its category, parent
-and content. May throw ErrNotFound. */
-func (store *Store) WritePost(ctx context.Context, catName string, threadNum int, p *UserPost) error {
-
-	opUID := ""
-	if threadNum != 0 {
-		op, err := store.GetPostByNumber(ctx, catName, threadNum)
-		if err != nil || op.IsReply() {
-			return ErrNotFound
-		}
-		opUID = op.UID
-	}
-
-	tx, err := store.pgPool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to obtain tx for post write: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	// Write post procedure expects OP UID
-
-	_, err = tx.Exec(
+Writes a post to the database attached to the given category.
+Optional parent thread can be provided if it's a reply.
+ErrNotFound if invalid post or category.
+*/
+func (store *Store) WritePost(ctx context.Context, catName string, parentThreadNumber int, p *UserPost) error {
+	_, err := store.pgPool.Exec(
 		ctx,
-		"CALL write_post($1, $2, $3, $4)",
-		generateUniqueID(),
+		"CALL write_post($1, $2::int, $3)",
 		catName,
-		opUID,
+		parentThreadNumber,
 		p.Content,
 	)
 
@@ -344,14 +362,25 @@ func (store *Store) WritePost(ctx context.Context, catName string, threadNum int
 		}
 		return fmt.Errorf("failed to execute post write: %w", err)
 	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("failed to commit post write: %w", err)
-	}
 	return nil
 }
 
-// GenerateUniqueID generates a new globally unique identifier string.
-func generateUniqueID() string {
-	return xid.New().String()
+func (store *Store) Migrate(ctx context.Context, up bool) error {
+	var file string
+	if up {
+		file = "./db/migrate_up.sql"
+	} else {
+		file = "./db/migrate_down.sql"
+	}
+
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+
+	_, err = store.pgPool.Exec(ctx, string(data))
+	if err != nil {
+		return fmt.Errorf("failed to migrate db: %w", err)
+	}
+	return nil
 }

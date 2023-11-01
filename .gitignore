@@ -3,3 +3,4 @@ spiritchat
 spiritchat.exe
 .vscode
 __debug_bin
+.env*
