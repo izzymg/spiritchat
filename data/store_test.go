@@ -8,6 +8,32 @@ import (
 	"testing"
 )
 
+// Should return true if a post is a reply in the DB.
+func TestIsReply(t *testing.T) {
+	thread := Post{
+		Parent: 0,
+	}
+	replyOne := Post{
+		Parent: 1,
+	}
+
+	replyTwo := Post{
+		Parent: 300,
+	}
+
+	if thread.IsReply() {
+		t.Error("thread should not be reply")
+	}
+
+	if !replyOne.IsReply() {
+		t.Error("reply should be reply")
+	}
+
+	if !replyTwo.IsReply() {
+		t.Error("reply should be reply")
+	}
+}
+
 func TestIntegrations(t *testing.T) {
 	shouldRun, store, err := getIntegrationTestSetup()
 	if err != nil {
@@ -25,6 +51,7 @@ func TestIntegrations(t *testing.T) {
 		"Concurrent Thread Writes": integration_ConcurrentThreadWrites,
 		"Post writes":              integration_WritePosts,
 		"Get Category View":        integration_GetCatView,
+		"Get Categories":           integration_GetCategories,
 	}
 
 	for name, fn := range integrationTests {
@@ -48,6 +75,44 @@ func getIntegrationTestSetup() (bool, *Store, error) {
 		return true, nil, err
 	}
 	return true, store, nil
+}
+
+func integration_GetCategories(ctx context.Context, store *Store) func(t *testing.T) {
+	return func(t *testing.T) {
+		tests := map[string][]string{
+			"Some categories": {"beep", "boop", "bop"},
+			"No categories":   {},
+		}
+
+		for name, categoryNames := range tests {
+			t.Run(name, func(t *testing.T) {
+				err := createTestCategories(ctx, store, categoryNames)
+				if err != nil {
+					t.Error(err)
+				}
+				defer removeTestCategories(ctx, store, categoryNames)
+
+				cats, err := store.GetCategories(ctx)
+				if err != nil {
+					t.Error(err)
+				}
+				if len(cats) != len(categoryNames) {
+					t.Errorf("expected %d categories, got: %d", len(categoryNames), len(cats))
+				}
+				for i := 0; i < len(categoryNames); i++ {
+					has := false
+					for j := 0; j < len(cats); j++ {
+						if cats[j].Name == categoryNames[i] {
+							has = true
+						}
+					}
+					if !has {
+						t.Errorf("returned categories does not have value: %s", categoryNames[i])
+					}
+				}
+			})
+		}
+	}
 }
 
 func integration_GetCatView(ctx context.Context, store *Store) func(t *testing.T) {

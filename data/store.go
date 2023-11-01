@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -29,7 +28,7 @@ type Category struct {
 type Post struct {
 	Num       int       `json:"num"`
 	Cat       string    `json:"cat"`
-	ParentUID string    `json:"-"`
+	Parent    int       `json:"-"`
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"createdAt"`
 }
@@ -41,7 +40,7 @@ type UserPost struct {
 
 // IsReply returns true if this post has a parent.
 func (post Post) IsReply() bool {
-	return len(post.ParentUID) > 0
+	return post.Parent != 0
 }
 
 // CatView contains JSON information about a category, and all the threads on it.
@@ -211,15 +210,13 @@ func (store *Store) GetPostByNumber(ctx context.Context, catName string, num int
 	)
 
 	var p Post
-	var parent sql.NullString
-	err := row.Scan(&p.Num, &p.Cat, &p.Content, &parent, &p.CreatedAt)
+	err := row.Scan(&p.Num, &p.Cat, &p.Content, &p.Parent, &p.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("failed to parse a post by number: %w", err)
 	}
-	p.ParentUID = parent.String
 	return &p, nil
 }
 
@@ -259,12 +256,10 @@ func (store *Store) GetThreadView(ctx context.Context, catName string, threadNum
 	posts := []*Post{op}
 	for replyRows.Next() {
 		post := &Post{}
-		var parent sql.NullString
-		err := replyRows.Scan(&post.Num, &post.Cat, &post.Content, &parent, &post.CreatedAt)
+		err := replyRows.Scan(&post.Num, &post.Cat, &post.Content, &post.Parent, &post.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse thread reply: %w", err)
 		}
-		post.ParentUID = parent.String
 		posts = append(posts, post)
 	}
 	if len(posts) == 0 {
