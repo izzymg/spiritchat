@@ -1,6 +1,21 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+)
+
+func getPostCooldownEnv(env string) int {
+	env, found := os.LookupEnv(env)
+	if !found {
+		return 30
+	}
+	cooldown, err := strconv.ParseInt(env, 10, 64)
+	if err != nil {
+		return 30
+	}
+	return int(cooldown)
+}
 
 // ShouldRunIntegrations is a testing function, returns false if integrations shouldn't be run.
 func ShouldRunIntegrations() bool {
@@ -14,7 +29,8 @@ func ShouldRunIntegrations() bool {
 
 /*
 GetIntegrationsConfig is a testing function,
-returns false if integrations shouldn't be run, or true, and integration config. */
+returns false if integrations shouldn't be run, or true, and integration config.
+*/
 func GetIntegrationsConfig() (*Config, bool) {
 	if !ShouldRunIntegrations() {
 		return nil, false
@@ -27,27 +43,31 @@ func GetIntegrationsConfig() (*Config, bool) {
 	}
 
 	return &Config{
-		HTTPAddress: addr,
-		PGURL:       pgURL,
-		RedisURL:    redisURL,
+		HTTPAddress:         addr,
+		PGURL:               pgURL,
+		RedisURL:            redisURL,
+		PostCooldownSeconds: 0,
 	}, true
 }
 
 // Config stores configuration for the app.
 type Config struct {
-	HTTPAddress string
-	CORSAllow   string
-	PGURL       string
-	RedisURL    string
+	HTTPAddress         string
+	CORSAllow           string
+	PGURL               string
+	RedisURL            string
+	PostCooldownSeconds int
 }
 
 // ParseEnv parses system environment variables, returning app configuration.
 func ParseEnv() *Config {
+
 	conf := &Config{
-		HTTPAddress: "0.0.0.0:3000",
-		CORSAllow:   "https://example.com",
-		PGURL:       os.Getenv("SPIRITCHAT_PG_URL"),
-		RedisURL:    os.Getenv("SPIRITCHAT_REDIS_URL"),
+		HTTPAddress:         "0.0.0.0:3000",
+		CORSAllow:           "https://example.com",
+		PGURL:               os.Getenv("SPIRITCHAT_PG_URL"),
+		RedisURL:            os.Getenv("SPIRITCHAT_REDIS_URL"),
+		PostCooldownSeconds: getPostCooldownEnv("SPIRITCHAT_COOLDOWN"),
 	}
 	if addr, ok := os.LookupEnv("SPIRITCHAT_ADDRESS"); ok {
 		conf.HTTPAddress = addr

@@ -20,6 +20,7 @@ const genericFailMessage = "Sorry, an error occurred while handling your request
 // Server stub todo
 type Server struct {
 	PostCooldownSeconds int
+	cooldownMs          int
 	store               *data.Store
 	httpServer          http.Server
 }
@@ -180,7 +181,8 @@ type ServerOptions struct {
 func NewServer(store *data.Store, opts ServerOptions) *Server {
 
 	server := &Server{
-		store: store,
+		store:      store,
+		cooldownMs: opts.PostCooldownSeconds * 1000,
 		httpServer: http.Server{
 			Addr:              opts.Address,
 			IdleTimeout:       time.Minute * 10,

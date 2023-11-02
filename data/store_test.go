@@ -6,6 +6,7 @@ import (
 	"spiritchat/config"
 	"sync"
 	"testing"
+	"time"
 )
 
 // Should return true if a post is a reply in the DB.
@@ -53,6 +54,7 @@ func TestIntegrations(t *testing.T) {
 		"Get Categories":     integration_GetCategories,
 		"Get Post by Number": integration_GetPostByNumber,
 		"Get Thread View":    integration_GetThreadView,
+		"Rate limit IPs":     integration_RateLimit,
 	}
 
 	for name, fn := range integrationTests {
@@ -191,7 +193,7 @@ func integration_GetCategories(ctx context.Context, store *Store) func(t *testin
 					t.Error(err)
 				}
 				if len(cats) != len(categoryNames) {
-					t.Errorf("expected %d categories, got: %d", len(categoryNames), len(cats))
+					t.Errorf("expected %d categories, got: %d %v", len(categoryNames), len(cats), cats)
 				}
 				for i := 0; i < len(categoryNames); i++ {
 					has := false
@@ -381,43 +383,40 @@ func concurrentThreadWriteTest(ctx context.Context, datastore *Store, tests map[
 	}
 }
 
-/*
-func intRateLimit(ctx context.Context, store *Store, conf *config.Config) func(t *testing.T) {
+func integration_RateLimit(ctx context.Context, store *Store) func(t *testing.T) {
 	return func(t *testing.T) {
 
-		tests := []string{"13.3.4", "100.3r45.5434z", "localhost", "127.0.0.1", "zzzz"}
+		tests := []string{"13.3.4", "100.3r45.5434z", "localhost", "127.0.0.1", "123.123.123.123", "not even an ip lol"}
+		limited, err := store.IsRateLimited("garbage_ip")
+		if err != nil {
+			t.Error(err)
+		}
+		if limited {
+			t.Error("Expected no rate limit on garbage IP")
+		}
+
+		timeMs := 50
 		for _, ip := range tests {
-			ip := ip
-			t.Run(fmt.Sprintf("rateLimit-%s", ip), func(t *testing.T) {
-				t.Parallel()
-				// Random key should not be limited
-				limited, err := store.IsRateLimited("garbage_ip")
-				if err != nil {
-					t.Error(err)
-				}
-				if limited {
-					t.Error("Expected limited == false")
-				}
+			store.RateLimit(ip, timeMs)
+			limited, err = store.IsRateLimited(ip)
+			if err != nil {
+				t.Error(err)
+			}
+			if !limited {
+				t.Error("Expected rate limit after limiting")
+			}
+		}
 
-				store.RateLimit(ip, 2)
-				limited, err = store.IsRateLimited(ip)
-				if err != nil {
-					t.Error(err)
-				}
-				if !limited {
-					t.Error("Expected limited == true")
-				}
+		<-time.After(time.Duration(timeMs+50) * time.Millisecond)
 
-				<-time.After(time.Second * 3)
-				limited, err = store.IsRateLimited(ip)
-				if err != nil {
-					t.Error(err)
-				}
-				if limited {
-					t.Error("Expected limited == false")
-				}
-			})
+		for _, ip := range tests {
+			limited, err = store.IsRateLimited(ip)
+			if err != nil {
+				t.Error(err)
+			}
+			if limited {
+				t.Error("Expected rate limit to expire")
+			}
 		}
 	}
 }
-*/

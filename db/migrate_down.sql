@@ -1,5 +1,5 @@
-DROP TRIGGER check_reply ON posts;
-DROP FUNCTION check_reply();
+DROP TRIGGER IF EXISTS check_reply ON posts;
+DROP FUNCTION IF EXISTS check_reply();
 DROP PROCEDURE IF EXISTS write_post;
-DROP TABLE posts;
-DROP TABLE cats;
+DROP TABLE IF EXISTS posts;
+DROP TABLE IF EXISTS cats;

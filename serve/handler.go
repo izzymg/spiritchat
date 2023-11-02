@@ -15,8 +15,7 @@ type request struct {
 	params     httprouter.Params
 	rawRequest *http.Request
 	header     http.Header
-	// Favours: X-Forwarded-For > X-Real-IP -> Remote Addr
-	ip string
+	ip         string // Priority: X-Forwarded-For > X-Real-IP -> Remote Addr
 }
 
 type respondFunc func(status int, jsonObj interface{}, message string)

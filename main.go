@@ -47,7 +47,7 @@ func main() {
 		server := serve.NewServer(store, serve.ServerOptions{
 			Address:             conf.HTTPAddress,
 			CorsOriginAllow:     conf.CORSAllow,
-			PostCooldownSeconds: 30,
+			PostCooldownSeconds: conf.PostCooldownSeconds,
 		})
 		log.Printf("Starting server on %s, allowing %s CORS", conf.HTTPAddress, conf.CORSAllow)
 		log.Println(server.Listen(ctx))
