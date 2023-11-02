@@ -227,33 +227,18 @@ is invalid
 */
 func (store *Store) GetThreadView(ctx context.Context, catName string, threadNum int) (*ThreadView, error) {
 
-	// Find the category, ensure it's valid
-	category, err := store.GetCategory(ctx, catName)
-	if err != nil {
-		return nil, err
-	}
-
-	// Find the OP, ensure it's valid
-	op, err := store.GetPostByNumber(ctx, catName, threadNum)
-	if err != nil {
-		return nil, err
-	}
-	if op.IsReply() {
-		return nil, ErrNotFound
-	}
-
 	replyRows, err := store.pgPool.Query(
 		ctx,
-		"SELECT num, cat, content, parent, created_at FROM posts WHERE parent = $1 ORDER BY num ASC",
+		"select num, cat, content, parent, created_at FROM posts WHERE cat = $1 AND (num = $2 or parent = $2) ORDER BY NUM ASC;",
+		catName,
 		threadNum,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query thread replies: %w", err)
+		return nil, fmt.Errorf("failed to query thread: %w", err)
 	}
 	defer replyRows.Close()
 
-	// Append all the replies after the OP
-	posts := []*Post{op}
+	posts := []*Post{}
 	for replyRows.Next() {
 		post := &Post{}
 		err := replyRows.Scan(&post.Num, &post.Cat, &post.Content, &post.Parent, &post.CreatedAt)
@@ -267,8 +252,10 @@ func (store *Store) GetThreadView(ctx context.Context, catName string, threadNum
 	}
 
 	return &ThreadView{
-		Category: category,
-		Posts:    posts,
+		Category: &Category{
+			Name: catName,
+		},
+		Posts: posts,
 	}, nil
 }
 

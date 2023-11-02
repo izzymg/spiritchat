@@ -48,15 +48,18 @@ func TestIntegrations(t *testing.T) {
 	defer store.Cleanup(ctx)
 
 	integrationTests := map[string]func(context.Context, *Store) func(t *testing.T){
-		"Concurrent Thread Writes": integration_ConcurrentThreadWrites,
-		"Post writes":              integration_WritePosts,
-		"Get Category View":        integration_GetCatView,
-		"Get Categories":           integration_GetCategories,
+		"Post writes":        integration_WritePosts,
+		"Get Category View":  integration_GetCatView,
+		"Get Categories":     integration_GetCategories,
+		"Get Post by Number": integration_GetPostByNumber,
+		"Get Thread View":    integration_GetThreadView,
 	}
 
 	for name, fn := range integrationTests {
 		t.Run(name, fn(ctx, store))
 	}
+
+	t.Run("Test Concurrent Thread Writes", integration_ConcurrentThreadWrites(ctx, store))
 
 }
 
@@ -75,6 +78,97 @@ func getIntegrationTestSetup() (bool, *Store, error) {
 		return true, nil, err
 	}
 	return true, store, nil
+}
+
+func integration_GetThreadView(ctx context.Context, store *Store) func(t *testing.T) {
+	return func(t *testing.T) {
+		_, err := store.GetThreadView(ctx, "none", 0)
+		if err == nil || err != ErrNotFound {
+			t.Errorf("expected ErrNotFound, got: %v", err)
+		}
+
+		testCategories := []string{"bbb", "vvv", "ccc"}
+		tests := map[string]int{
+			testCategories[0]: 5,
+			testCategories[1]: 15,
+			testCategories[2]: 0,
+		}
+
+		err = createTestCategories(ctx, store, testCategories)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer removeTestCategories(ctx, store, testCategories)
+
+		// invalid
+		_, err = store.GetThreadView(ctx, "nothing", 0)
+		if err == nil || err != ErrNotFound {
+			t.Errorf("expected ErrNotFound, got: %v", err)
+		}
+
+		testPost := createTestUserPost()
+		opCount := 3
+		for categoryName, replyCount := range tests {
+			// create OPs
+			for i := 0; i < opCount; i++ {
+				err := store.WritePost(ctx, categoryName, 0, testPost)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			opNum := opCount - 1
+			// create replies to an op
+			for i := 0; i < replyCount; i++ {
+				err := store.WritePost(ctx, categoryName, opNum, testPost)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			view, err := store.GetThreadView(ctx, categoryName, opNum)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(view.Posts) != replyCount+1 {
+				t.Errorf("expected %d posts, got: %d", replyCount+1, len(view.Posts))
+			}
+		}
+	}
+}
+
+func integration_GetPostByNumber(ctx context.Context, store *Store) func(t *testing.T) {
+	return func(t *testing.T) {
+
+		testCategories := []string{"beepboop", "bonk"}
+		err := createTestCategories(ctx, store, testCategories)
+		if err != nil {
+			t.Error(err)
+		}
+		defer removeTestCategories(ctx, store, testCategories)
+
+		testPost := createTestUserPost()
+		for _, categoryName := range testCategories {
+			err = store.WritePost(ctx, categoryName, 0, testPost)
+			if err != nil {
+				t.Error(err)
+			}
+			post, err := store.GetPostByNumber(ctx, categoryName, 1)
+			if err != nil {
+				t.Error(err)
+			}
+
+			if post.Content != testPost.Content {
+				t.Errorf("post content mismatch, expected %s got: %s", testPost.Content, post.Content)
+			}
+		}
+
+		// test invalid post
+		_, err = store.GetPostByNumber(ctx, "i dont exist", 0)
+		if err == nil || !errors.Is(err, ErrNotFound) {
+			t.Errorf("expected ErrNotFound, got: %v", err)
+		}
+	}
 }
 
 func integration_GetCategories(ctx context.Context, store *Store) func(t *testing.T) {
