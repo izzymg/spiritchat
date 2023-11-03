@@ -127,7 +127,7 @@ func TestMiddlewareRateLimit(t *testing.T) {
 		respond(okStatus, nil, okText)
 	}
 
-	handler := genHandler(server.middlewareRateLimit(okHandler, 0, "dogs", "beep"))
+	handler := genHandler(server.middlewareRateLimit(okHandler, 0, "dogs"))
 
 	router := httprouter.New()
 	router.GET("/random/", handler)
