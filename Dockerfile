@@ -11,5 +11,9 @@ FROM scratch
 WORKDIR /app
 
 COPY --from=builder /app/spirit /app/spirit
+COPY --from=builder /app/db /app/
+COPY --from=builder /app/db/ /app/
+
+EXPOSE 3000
 
 ENTRYPOINT ["/app/spirit"]

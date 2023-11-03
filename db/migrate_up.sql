@@ -32,14 +32,14 @@ $write_post$ LANGUAGE plpgsql;
 
 
 -- Categories
-CREATE TABLE cats (
+CREATE TABLE IF NOT EXISTS cats (
     name                    text,
     post_count              integer NOT NULL DEFAULT 1,
     CONSTRAINT cat_name     PRIMARY KEY(name)
 );
 
 -- Posts
-CREATE TABLE posts (
+CREATE TABLE IF NOT EXISTS posts (
     num                     integer NOT NULL DEFAULT 0,
     cat                     text NOT NULL,
     parent                  integer NOT NULL,
@@ -51,5 +51,5 @@ CREATE TABLE posts (
 );
 
 -- Check replies before submission.
-CREATE TRIGGER check_reply BEFORE INSERT OR UPDATE ON posts
+CREATE OR REPLACE TRIGGER check_reply BEFORE INSERT OR UPDATE ON posts
     FOR EACH ROW EXECUTE PROCEDURE check_reply();

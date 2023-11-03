@@ -11,13 +11,27 @@ services:
       - POSTGRES_PASSWORD=pgpass
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d postgres -U pguser"]
   web:
     build: .
     ports:
       - "3000:3000"
+    restart: always
     env_file:
       - .env
     depends_on:
-      - postgres
-      - redis
-  
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+  migrate:
+    build: .
+    env_file:
+      - .env
+    profiles:
+      - migrate
+    depends_on:
+      - web
+    restart: no
+    entrypoint: ["/app/spirit", "migrate", "up"]

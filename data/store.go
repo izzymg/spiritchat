@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
@@ -376,12 +377,17 @@ func (store *DataStore) WritePost(ctx context.Context, catName string, parentThr
 func (store *DataStore) Migrate(ctx context.Context, up bool) error {
 	var file string
 	if up {
-		file = "./db/migrate_up.sql"
+		file = "migrate_up.sql"
 	} else {
-		file = "./db/migrate_down.sql"
+		file = "migrate_down.sql"
 	}
 
-	data, err := os.ReadFile(file)
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	data, err := os.ReadFile(path.Join(wd, "db", file))
 	if err != nil {
 		return err
 	}
