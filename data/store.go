@@ -238,7 +238,7 @@ func (store *DataStore) GetCategories(ctx context.Context) ([]*Category, error) 
 	}
 	defer rows.Close()
 
-	var cats []*Category
+	var cats []*Category = make([]*Category, 0)
 	for rows.Next() {
 		var c Category
 		err := rows.Scan(&c.Name)
@@ -282,7 +282,7 @@ func (store *DataStore) GetThreadView(ctx context.Context, catName string, threa
 	}
 	defer replyRows.Close()
 
-	posts := []*Post{}
+	var posts []*Post = make([]*Post, 0)
 	for replyRows.Next() {
 		post := &Post{}
 		err := replyRows.Scan(&post.Num, &post.Cat, &post.Content, &post.Parent, &post.CreatedAt)
@@ -338,7 +338,7 @@ func (store *DataStore) GetCategoryView(ctx context.Context, catName string) (*C
 	}
 	defer rows.Close()
 
-	var posts []*Post
+	var posts []*Post = make([]*Post, 0)
 	for rows.Next() {
 		post := &Post{}
 		err := rows.Scan(&post.Num, &post.Cat, &post.Content, &post.CreatedAt)
