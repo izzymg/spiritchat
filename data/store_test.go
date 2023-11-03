@@ -48,7 +48,7 @@ func TestIntegrations(t *testing.T) {
 	ctx := context.Background()
 	defer store.Cleanup(ctx)
 
-	integrationTests := map[string]func(context.Context, *Store) func(t *testing.T){
+	integrationTests := map[string]func(context.Context, *DataStore) func(t *testing.T){
 		"Post writes":        integration_WritePosts,
 		"Get Category View":  integration_GetCatView,
 		"Get Categories":     integration_GetCategories,
@@ -66,7 +66,7 @@ func TestIntegrations(t *testing.T) {
 }
 
 // Returns whether integrations should run, and the given store if so.
-func getIntegrationTestSetup() (bool, *Store, error) {
+func getIntegrationTestSetup() (bool, *DataStore, error) {
 	conf, shouldRun := config.GetIntegrationsConfig()
 	if !shouldRun {
 		return false, nil, nil
@@ -82,7 +82,7 @@ func getIntegrationTestSetup() (bool, *Store, error) {
 	return true, store, nil
 }
 
-func integration_GetThreadView(ctx context.Context, store *Store) func(t *testing.T) {
+func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *testing.T) {
 	return func(t *testing.T) {
 		_, err := store.GetThreadView(ctx, "none", 0)
 		if err == nil || err != ErrNotFound {
@@ -139,7 +139,7 @@ func integration_GetThreadView(ctx context.Context, store *Store) func(t *testin
 	}
 }
 
-func integration_GetPostByNumber(ctx context.Context, store *Store) func(t *testing.T) {
+func integration_GetPostByNumber(ctx context.Context, store *DataStore) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		testCategories := []string{"beepboop", "bonk"}
@@ -173,7 +173,7 @@ func integration_GetPostByNumber(ctx context.Context, store *Store) func(t *test
 	}
 }
 
-func integration_GetCategories(ctx context.Context, store *Store) func(t *testing.T) {
+func integration_GetCategories(ctx context.Context, store *DataStore) func(t *testing.T) {
 	return func(t *testing.T) {
 		tests := map[string][]string{
 			"Some categories": {"beep", "boop", "bop"},
@@ -211,7 +211,7 @@ func integration_GetCategories(ctx context.Context, store *Store) func(t *testin
 	}
 }
 
-func integration_GetCatView(ctx context.Context, store *Store) func(t *testing.T) {
+func integration_GetCatView(ctx context.Context, store *DataStore) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		testCategories := []string{"test-catview"}
@@ -255,7 +255,7 @@ func integration_GetCatView(ctx context.Context, store *Store) func(t *testing.T
 	}
 }
 
-func integration_ConcurrentThreadWrites(ctx context.Context, store *Store) func(t *testing.T) {
+func integration_ConcurrentThreadWrites(ctx context.Context, store *DataStore) func(t *testing.T) {
 	return func(t *testing.T) {
 		categoryThreadCountMap := map[string]int{
 			"test-1": 45,
@@ -278,7 +278,7 @@ func integration_ConcurrentThreadWrites(ctx context.Context, store *Store) func(
 *
 Test writing valid & invalid posts
 */
-func integration_WritePosts(ctx context.Context, datastore *Store) func(t *testing.T) {
+func integration_WritePosts(ctx context.Context, datastore *DataStore) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Run("invalid category", func(t *testing.T) {
 			err := datastore.WritePost(ctx, "invalid-category", 0, createTestUserPost())
@@ -324,7 +324,7 @@ func createTestUserPost() *UserPost {
 	}
 }
 
-func createTestCategories(ctx context.Context, datastore *Store, categoryNames []string) error {
+func createTestCategories(ctx context.Context, datastore *DataStore, categoryNames []string) error {
 	for _, categoryName := range categoryNames {
 		err := datastore.WriteCategory(ctx, categoryName)
 		if err != nil {
@@ -334,7 +334,7 @@ func createTestCategories(ctx context.Context, datastore *Store, categoryNames [
 	return nil
 }
 
-func removeTestCategories(ctx context.Context, datastore *Store, categoryNames []string) error {
+func removeTestCategories(ctx context.Context, datastore *DataStore, categoryNames []string) error {
 	for _, categoryName := range categoryNames {
 		_, err := datastore.RemoveCategory(ctx, categoryName)
 		if err != nil {
@@ -348,7 +348,7 @@ func removeTestCategories(ctx context.Context, datastore *Store, categoryNames [
 Takes a map of category names and their number of threads to create.
 Creates all categories, and then writes n threads to each category concurrently.
 */
-func concurrentThreadWriteTest(ctx context.Context, datastore *Store, tests map[string]int) func(t *testing.T) {
+func concurrentThreadWriteTest(ctx context.Context, datastore *DataStore, tests map[string]int) func(t *testing.T) {
 	return func(t *testing.T) {
 		for categoryName, threadCount := range tests {
 			testUserPost := createTestUserPost()
@@ -383,11 +383,17 @@ func concurrentThreadWriteTest(ctx context.Context, datastore *Store, tests map[
 	}
 }
 
-func integration_RateLimit(ctx context.Context, store *Store) func(t *testing.T) {
+func integration_RateLimit(ctx context.Context, store *DataStore) func(t *testing.T) {
 	return func(t *testing.T) {
 
-		tests := []string{"13.3.4", "100.3r45.5434z", "localhost", "127.0.0.1", "123.123.123.123", "not even an ip lol"}
-		limited, err := store.IsRateLimited("garbage_ip")
+		tests := map[string]string{
+			"13.3.4":         "write a post",
+			"100.3r45.5434z": "beep",
+			"localhost":      "0001010",
+			"127.0.0.1":      "somce resource",
+			"hiiii":          "somce resource",
+		}
+		limited, err := store.IsRateLimited("garbage_ip", "ttt")
 		if err != nil {
 			t.Error(err)
 		}
@@ -395,10 +401,10 @@ func integration_RateLimit(ctx context.Context, store *Store) func(t *testing.T)
 			t.Error("Expected no rate limit on garbage IP")
 		}
 
-		timeMs := 50
-		for _, ip := range tests {
-			store.RateLimit(ip, timeMs)
-			limited, err = store.IsRateLimited(ip)
+		timeMs := 555
+		for ip, resource := range tests {
+			store.RateLimit(ip, resource, timeMs)
+			limited, err = store.IsRateLimited(ip, resource)
 			if err != nil {
 				t.Error(err)
 			}
@@ -409,8 +415,8 @@ func integration_RateLimit(ctx context.Context, store *Store) func(t *testing.T)
 
 		<-time.After(time.Duration(timeMs+50) * time.Millisecond)
 
-		for _, ip := range tests {
-			limited, err = store.IsRateLimited(ip)
+		for ip, resource := range tests {
+			limited, err = store.IsRateLimited(ip, resource)
 			if err != nil {
 				t.Error(err)
 			}

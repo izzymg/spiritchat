@@ -13,10 +13,69 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
+type Store interface {
+	// Cleanup cleans the underlying connection to the data store.
+	Cleanup(ctx context.Context) error
+
+	// IsRateLimited returns true if the given IP is being rate limited.
+	IsRateLimited(identifier string, resource string) (bool, error)
+
+	// RateLimit marks IP & Resource as rate limited for n ms.
+	RateLimit(identifier string, resource string, ms int) error
+
+	// WriteCategory adds a new category to the database.
+	WriteCategory(ctx context.Context, catName string) error
+
+	/*
+		RemoveCategory removes all posts under category catName and removes the category.
+		Returns affected rows.
+	*/
+	RemoveCategory(ctx context.Context, catName string) (int64, error)
+
+	// GetThreadCount returns the number of threads in a category.
+	GetThreadCount(ctx context.Context, catName string) (int, error)
+
+	// GetCategories returns all categories.
+	GetCategories(ctx context.Context) ([]*Category, error)
+
+	/*
+		GetPostByNumber returns a post in a category by its number.
+		Should return ErrNotFound if no such post.
+	*/
+	GetPostByNumber(ctx context.Context, catName string, num int) (*Post, error)
+
+	/*
+		GetThreadView returns all the posts in a thread, and the category they're on.
+		Should return ErrNotFound if the requested thread is not an OP thread, or the category
+		is invalid
+	*/
+	GetThreadView(ctx context.Context, catName string, threadNum int) (*ThreadView, error)
+
+	/*
+		GetCategory returns a single category. May return ErrNotFound if the given category
+		name is invalid.
+	*/
+	GetCategory(ctx context.Context, catName string) (*Category, error)
+
+	/*
+		GetCatView returns information about a category, and all the threads on it.
+		May return an ErrNotFound if the given category name is invalid.
+	*/
+	GetCatView(ctx context.Context, catName string) (*CatView, error)
+
+	/*
+		Creates a post.
+		Optional parent thread can be provided if it's a reply.
+		Should return ErrNotFound if invalid post or category.
+	*/
+	WritePost(ctx context.Context, catName string, parentThreadNumber int, p *UserPost) error
+}
+
 var ErrNotFound = errors.New("not found")
 
-func getIPLockKey(ip string) string {
-	return ip + ":lock"
+// Returns a string identifying a resource and a rate limit identifier (IP addr usually)
+func getRateLimitResourceID(identifier string, resource string) string {
+	return fmt.Sprintf("%s-%s", identifier, resource)
 }
 
 // Category contains JSON information describing a Category for posts.
@@ -59,7 +118,7 @@ type ThreadView struct {
 }
 
 // NewDatastore creates a new data store, creating a connection.
-func NewDatastore(ctx context.Context, pgURL string, redisURL string, maxConns int32) (*Store, error) {
+func NewDatastore(ctx context.Context, pgURL string, redisURL string, maxConns int32) (*DataStore, error) {
 	redisPool := &redis.Pool{
 		MaxActive: int(maxConns),
 		MaxIdle:   int(maxConns),
@@ -85,30 +144,30 @@ func NewDatastore(ctx context.Context, pgURL string, redisURL string, maxConns i
 	if err != nil {
 		return nil, fmt.Errorf("pg connection failed: %w", err)
 	}
-	return &Store{
+	return &DataStore{
 		pgPool:    pgPool,
 		redisPool: redisPool,
 	}, nil
 }
 
-// Store allows for writing and reading from the persistent data store.
-type Store struct {
+type DataStore struct {
 	pgPool    *pgxpool.Pool
 	redisPool *redis.Pool
 }
 
-// Cleanup cleans the underlying connection to the data store.
-func (store *Store) Cleanup(ctx context.Context) error {
+func (store *DataStore) Cleanup(ctx context.Context) error {
 	store.pgPool.Close()
 	return store.redisPool.Close()
 }
 
-// IsRateLimited returns true if the given IP is being rate limited.
-func (store *Store) IsRateLimited(ip string) (bool, error) {
+func (store *DataStore) IsRateLimited(identifier string, resource string) (bool, error) {
 	conn := store.redisPool.Get()
 	defer conn.Close()
+
+	key := getRateLimitResourceID(identifier, resource)
+
 	exists, err := redis.Bool(conn.Do(
-		"EXISTS", getIPLockKey(ip),
+		"EXISTS", key,
 	))
 	if err != nil {
 		return false, fmt.Errorf("failed to look up ip rate limit: %w", err)
@@ -116,23 +175,22 @@ func (store *Store) IsRateLimited(ip string) (bool, error) {
 	return exists, nil
 }
 
-// RateLimit marks IP as rate limited for n ms.
-func (store *Store) RateLimit(ip string, ms int) error {
+func (store *DataStore) RateLimit(identifier string, resource string, ms int) error {
+	key := getRateLimitResourceID(identifier, resource)
 	if ms < 1 {
 		return nil
 	}
 	conn := store.redisPool.Get()
 	defer conn.Close()
-	_, err := conn.Do("SET", getIPLockKey(ip), ms)
+	_, err := conn.Do("SET", key, ms)
 	if err != nil {
 		return err
 	}
-	_, err = conn.Do("PEXPIRE", getIPLockKey(ip), ms)
+	_, err = conn.Do("PEXPIRE", key, ms)
 	return err
 }
 
-// WriteCategory adds a new category to the database.
-func (store *Store) WriteCategory(ctx context.Context, catName string) error {
+func (store *DataStore) WriteCategory(ctx context.Context, catName string) error {
 	_, err := store.pgPool.Exec(ctx, "INSERT INTO cats (name) VALUES ($1)", catName)
 	if err != nil {
 		return err
@@ -140,11 +198,7 @@ func (store *Store) WriteCategory(ctx context.Context, catName string) error {
 	return nil
 }
 
-/*
-RemoveCategory removes ALL posts under category catName and removes the category.
-Returns the number of rows affected (1 + number of removed posts).
-*/
-func (store *Store) RemoveCategory(ctx context.Context, catName string) (int64, error) {
+func (store *DataStore) RemoveCategory(ctx context.Context, catName string) (int64, error) {
 	var affected int64
 
 	tag, err := store.pgPool.Exec(ctx, "DELETE FROM posts WHERE cat = $1", catName)
@@ -160,8 +214,7 @@ func (store *Store) RemoveCategory(ctx context.Context, catName string) (int64, 
 	return affected + tag.RowsAffected(), nil
 }
 
-// GetThreadCount returns the number of threads in a category.
-func (store *Store) GetThreadCount(ctx context.Context, catName string) (int, error) {
+func (store *DataStore) GetThreadCount(ctx context.Context, catName string) (int, error) {
 	var count int
 	err := store.pgPool.QueryRow(
 		ctx,
@@ -174,8 +227,7 @@ func (store *Store) GetThreadCount(ctx context.Context, catName string) (int, er
 	return count, nil
 }
 
-// GetCategories returns all categories.
-func (store *Store) GetCategories(ctx context.Context) ([]*Category, error) {
+func (store *DataStore) GetCategories(ctx context.Context) ([]*Category, error) {
 	rows, err := store.pgPool.Query(
 		ctx,
 		"SELECT name FROM cats",
@@ -197,11 +249,7 @@ func (store *Store) GetCategories(ctx context.Context) ([]*Category, error) {
 	return cats, nil
 }
 
-/*
-GetPostByNumber returns a post in a category by its number.
-Will return ErrNotFound if no such post.
-*/
-func (store *Store) GetPostByNumber(ctx context.Context, catName string, num int) (*Post, error) {
+func (store *DataStore) GetPostByNumber(ctx context.Context, catName string, num int) (*Post, error) {
 	row := store.pgPool.QueryRow(
 		ctx,
 		"SELECT num, cat, content, parent, created_at FROM posts WHERE cat = $1 AND num = $2",
@@ -220,12 +268,7 @@ func (store *Store) GetPostByNumber(ctx context.Context, catName string, num int
 	return &p, nil
 }
 
-/*
-GetThreadView returns all the posts in a thread, and the category they're on.
-May return ErrNotFound if the requested thread is not an OP thread, or the category
-is invalid
-*/
-func (store *Store) GetThreadView(ctx context.Context, catName string, threadNum int) (*ThreadView, error) {
+func (store *DataStore) GetThreadView(ctx context.Context, catName string, threadNum int) (*ThreadView, error) {
 
 	replyRows, err := store.pgPool.Query(
 		ctx,
@@ -259,11 +302,7 @@ func (store *Store) GetThreadView(ctx context.Context, catName string, threadNum
 	}, nil
 }
 
-/*
-GetCategory returns a single category. May return ErrNotFound if the given category
-name is invalid.
-*/
-func (store *Store) GetCategory(ctx context.Context, catName string) (*Category, error) {
+func (store *DataStore) GetCategory(ctx context.Context, catName string) (*Category, error) {
 	rows, err := store.pgPool.Query(
 		ctx,
 		"SELECT name FROM cats WHERE name = $1",
@@ -282,11 +321,7 @@ func (store *Store) GetCategory(ctx context.Context, catName string) (*Category,
 	return nil, ErrNotFound
 }
 
-/*
-GetCatView returns information about a category, and all the threads on it.
-May return an ErrNotFound if the given category name is invalid.
-*/
-func (store *Store) GetCatView(ctx context.Context, catName string) (*CatView, error) {
+func (store *DataStore) GetCatView(ctx context.Context, catName string) (*CatView, error) {
 	cat, err := store.GetCategory(ctx, catName)
 	if err != nil {
 		return nil, err
@@ -317,12 +352,7 @@ func (store *Store) GetCatView(ctx context.Context, catName string) (*CatView, e
 	}, nil
 }
 
-/*
-Writes a post to the database attached to the given category.
-Optional parent thread can be provided if it's a reply.
-ErrNotFound if invalid post or category.
-*/
-func (store *Store) WritePost(ctx context.Context, catName string, parentThreadNumber int, p *UserPost) error {
+func (store *DataStore) WritePost(ctx context.Context, catName string, parentThreadNumber int, p *UserPost) error {
 	_, err := store.pgPool.Exec(
 		ctx,
 		"CALL write_post($1, $2::int, $3)",
@@ -343,7 +373,7 @@ func (store *Store) WritePost(ctx context.Context, catName string, parentThreadN
 	return nil
 }
 
-func (store *Store) Migrate(ctx context.Context, up bool) error {
+func (store *DataStore) Migrate(ctx context.Context, up bool) error {
 	var file string
 	if up {
 		file = "./db/migrate_up.sql"

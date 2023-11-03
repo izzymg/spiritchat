@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"spiritchat/data"
@@ -21,8 +20,12 @@ const genericFailMessage = "Sorry, an error occurred while handling your request
 type Server struct {
 	PostCooldownSeconds int
 	cooldownMs          int
-	store               *data.Store
+	store               data.Store
 	httpServer          http.Server
+}
+
+func (server *Server) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	server.httpServer.Handler.ServeHTTP(rw, req)
 }
 
 // Listen starts the server listening process until the context is cancelled (blocks).
@@ -54,7 +57,7 @@ func (server *Server) HandleGetCatView(ctx context.Context, req *request, respon
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			respond(
-				http.StatusInternalServerError,
+				http.StatusNotFound,
 				nil, err.Error(),
 			)
 			return
@@ -73,7 +76,7 @@ func (server *Server) HandleGetCatView(ctx context.Context, req *request, respon
 func (server *Server) HandleGetThreadView(ctx context.Context, req *request, respond respondFunc) {
 	threadNum, err := strconv.Atoi(req.params.ByName("thread"))
 	if err != nil {
-		respond(http.StatusNotFound, nil, "Invalid thread number")
+		respond(http.StatusBadRequest, nil, "Invalid thread number")
 		return
 	}
 	threadView, err := server.store.GetThreadView(ctx, req.params.ByName("cat"), threadNum)
@@ -92,27 +95,6 @@ func (server *Server) HandleGetThreadView(ctx context.Context, req *request, res
 
 // HandleWritePost handles a POST request to post a new post.
 func (server *Server) HandleWritePost(ctx context.Context, req *request, respond respondFunc) {
-	isLimited, err := server.store.IsRateLimited(req.ip)
-	if err != nil {
-		respond(http.StatusInternalServerError, nil, postFailMessage)
-		log.Printf("Failed to check rate limiting on request: %s", err)
-		return
-	}
-	if isLimited {
-		respond(http.StatusBadRequest, nil,
-			fmt.Sprintf(
-				"You must wait %d seconds between posts", server.PostCooldownSeconds,
-			),
-		)
-		return
-	}
-	err = server.store.RateLimit(req.ip, server.PostCooldownSeconds)
-	if err != nil {
-		respond(http.StatusInternalServerError, nil, postFailMessage)
-		log.Printf("Failed to rate limit request: %s", err)
-		return
-	}
-
 	catName := req.params.ByName("cat")
 	threadNumber, err := strconv.Atoi(req.params.ByName("thread"))
 	if err != nil {
@@ -125,7 +107,15 @@ func (server *Server) HandleWritePost(ctx context.Context, req *request, respond
 
 	// Decode body and write post
 	userPost := &data.UserPost{}
-	json.NewDecoder(req.rawRequest.Body).Decode(userPost)
+	if req.rawRequest.Body == nil {
+		respond(http.StatusBadRequest, nil, "no post provided")
+		return
+	}
+	err = json.NewDecoder(req.rawRequest.Body).Decode(userPost)
+	if err != nil {
+		respond(http.StatusBadRequest, nil, "bad formatting")
+		return
+	}
 
 	content, errMessage := data.CheckContent(userPost.Content)
 	if len(errMessage) > 0 {
@@ -170,6 +160,31 @@ func middlewareCORS(hand httprouter.Handle, allowedOrigin string) httprouter.Han
 	}
 }
 
+func (s *Server) middlewareRateLimit(hand handlerFunc, ms int, resource string, limitedMessage string) handlerFunc {
+	return func(ctx context.Context, req *request, respond respondFunc) {
+		isLimited, err := s.store.IsRateLimited(req.ip, resource)
+		if err != nil {
+			respond(http.StatusInternalServerError, nil, "internal server error")
+			log.Printf("Failed to fetch rate limit info: %s", err)
+			return
+		}
+
+		if isLimited {
+			respond(http.StatusTooManyRequests, nil, limitedMessage)
+			return
+		}
+
+		err = s.store.RateLimit(req.ip, resource, ms)
+		if err != nil {
+			respond(http.StatusInternalServerError, nil, "internal server error")
+			log.Printf("Failed to rate limit: %s", err)
+			return
+		}
+
+		hand(ctx, req, respond)
+	}
+}
+
 // ServerOptions configure the server.
 type ServerOptions struct {
 	Address             string
@@ -178,7 +193,7 @@ type ServerOptions struct {
 }
 
 // NewServer stub todo
-func NewServer(store *data.Store, opts ServerOptions) *Server {
+func NewServer(store data.Store, opts ServerOptions) *Server {
 
 	server := &Server{
 		store:      store,
