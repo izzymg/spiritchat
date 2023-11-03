@@ -22,7 +22,7 @@ func TestGenHandler(t *testing.T) {
 		Name string `json:"name"`
 	}
 
-	genHandler(func(ctx context.Context, req *request, res respondFunc) {
+	makeHandler(func(ctx context.Context, req *request, res respondFunc) {
 		if req.params.ByName("1") != "2" {
 			t.Fatalf("Unexpected route parameter %s", req.params.ByName("1"))
 		}
@@ -60,7 +60,7 @@ func TestHandlerIP(t *testing.T) {
 
 		recorder := httptest.NewRecorder()
 
-		genHandler(func(ctx context.Context, req *request, respond respondFunc) {
+		makeHandler(func(ctx context.Context, req *request, respond respondFunc) {
 			if req.ip != ip {
 				t.Fatalf("Expected request IP %s == %s", req.ip, ip)
 			}

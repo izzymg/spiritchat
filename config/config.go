@@ -31,7 +31,7 @@ func ShouldRunIntegrations() bool {
 GetIntegrationsConfig is a testing function,
 returns false if integrations shouldn't be run, or true, and integration config.
 */
-func GetIntegrationsConfig() (*Config, bool) {
+func GetIntegrationsConfig() (*SpiritConfig, bool) {
 	if !ShouldRunIntegrations() {
 		return nil, false
 	}
@@ -42,7 +42,7 @@ func GetIntegrationsConfig() (*Config, bool) {
 		panic("SPIRITTEST_PG_URL or SPIRITTEST_REDIS_URL or SPIRITTEST_ADDR empty")
 	}
 
-	return &Config{
+	return &SpiritConfig{
 		HTTPAddress:         addr,
 		PGURL:               pgURL,
 		RedisURL:            redisURL,
@@ -50,8 +50,8 @@ func GetIntegrationsConfig() (*Config, bool) {
 	}, true
 }
 
-// Config stores configuration for the app.
-type Config struct {
+// SpiritConfig stores configuration for the app.
+type SpiritConfig struct {
 	HTTPAddress         string
 	CORSAllow           string
 	PGURL               string
@@ -60,9 +60,9 @@ type Config struct {
 }
 
 // ParseEnv parses system environment variables, returning app configuration.
-func ParseEnv() *Config {
+func ParseEnv() *SpiritConfig {
 
-	conf := &Config{
+	conf := &SpiritConfig{
 		HTTPAddress:         "0.0.0.0:3000",
 		CORSAllow:           "https://example.com",
 		PGURL:               os.Getenv("SPIRITCHAT_PG_URL"),

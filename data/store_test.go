@@ -50,7 +50,7 @@ func TestIntegrations(t *testing.T) {
 
 	integrationTests := map[string]func(context.Context, *DataStore) func(t *testing.T){
 		"Post writes":        integration_WritePosts,
-		"Get Category View":  integration_GetCatView,
+		"Get Category View":  integration_GetCategoryView,
 		"Get Categories":     integration_GetCategories,
 		"Get Post by Number": integration_GetPostByNumber,
 		"Get Thread View":    integration_GetThreadView,
@@ -211,7 +211,7 @@ func integration_GetCategories(ctx context.Context, store *DataStore) func(t *te
 	}
 }
 
-func integration_GetCatView(ctx context.Context, store *DataStore) func(t *testing.T) {
+func integration_GetCategoryView(ctx context.Context, store *DataStore) func(t *testing.T) {
 	return func(t *testing.T) {
 
 		testCategories := []string{"test-catview"}
@@ -238,8 +238,8 @@ func integration_GetCatView(ctx context.Context, store *DataStore) func(t *testi
 			t.Error(err)
 		}
 
-		// getcatview should return the category, the post, but no replies
-		view, err := store.GetCatView(ctx, testCategories[0])
+		// GetCategoryView should return the category, the post, but no replies
+		view, err := store.GetCategoryView(ctx, testCategories[0])
 		if err != nil {
 			t.Error(err)
 		}

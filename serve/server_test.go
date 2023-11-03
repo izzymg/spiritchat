@@ -85,10 +85,10 @@ func (ms *MockStore) GetCategory(ctx context.Context, catName string) (*data.Cat
 }
 
 /*
-GetCatView returns information about a category, and all the threads on it.
+GetCategoryView returns information about a category, and all the threads on it.
 May return an ErrNotFound if the given category name is invalid.
 */
-func (ms *MockStore) GetCatView(ctx context.Context, catName string) (*data.CatView, error) {
+func (ms *MockStore) GetCategoryView(ctx context.Context, catName string) (*data.CatView, error) {
 	return ms.getCategoryView, ms.err
 }
 
@@ -127,7 +127,7 @@ func TestMiddlewareRateLimit(t *testing.T) {
 		respond(okStatus, nil, okText)
 	}
 
-	handler := genHandler(server.middlewareRateLimit(okHandler, 0, "dogs"))
+	handler := makeHandler(server.middlewareRateLimit(okHandler, 0, "dogs"))
 
 	router := httprouter.New()
 	router.GET("/random/", handler)

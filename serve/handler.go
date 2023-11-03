@@ -20,9 +20,11 @@ type request struct {
 
 type respondFunc func(status int, jsonObj interface{}, message string)
 
+// Simplified HTTP handler function
 type handlerFunc func(ctx context.Context, req *request, respond respondFunc)
 
-func genHandler(handler handlerFunc) httprouter.Handle {
+// Takes a custom handler function and returns an httprouter handler
+func makeHandler(handler handlerFunc) httprouter.Handle {
 	return func(rw http.ResponseWriter, req *http.Request, params httprouter.Params) {
 		// Find the request IP
 		ip := req.Header.Get("X-FORWARDED-FOR")

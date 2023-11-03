@@ -49,9 +49,9 @@ func (server *Server) HandleGetCategories(ctx context.Context, req *request, res
 	respond(http.StatusOK, categories, "")
 }
 
-// HandleGetCatView handles a GET request for information on a single category.
-func (server *Server) HandleGetCatView(ctx context.Context, req *request, respond respondFunc) {
-	view, err := server.store.GetCatView(ctx, req.params.ByName("cat"))
+// HandleGetCategoryView handles a GET request for information on a single category.
+func (server *Server) HandleGetCategoryView(ctx context.Context, req *request, respond respondFunc) {
+	view, err := server.store.GetCategoryView(ctx, req.params.ByName("cat"))
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			respond(
@@ -210,7 +210,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 
 	router.GET(
 		"/v1",
-		genHandler(
+		makeHandler(
 			server.middlewareCORS(
 				server.middlewareRateLimit(server.HandleGetCategories, 100, "get-cats"),
 				opts.CorsOriginAllow,
@@ -219,15 +219,15 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 	)
 	router.GET(
 		"/v1/:cat",
-		genHandler(
+		makeHandler(
 			server.middlewareCORS(
-				server.middlewareRateLimit(server.HandleGetCatView, 100, "get-catview"), opts.CorsOriginAllow,
+				server.middlewareRateLimit(server.HandleGetCategoryView, 100, "get-catview"), opts.CorsOriginAllow,
 			),
 		),
 	)
 	router.POST(
 		"/v1/:cat/:thread",
-		genHandler(
+		makeHandler(
 			server.middlewareCORS(
 				server.middlewareRateLimit(server.HandleWritePost, server.postCooldownMs, "post-post"),
 				opts.CorsOriginAllow,
@@ -236,7 +236,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 	)
 	router.GET(
 		"/v1/:cat/:thread",
-		genHandler(
+		makeHandler(
 			server.middlewareCORS(
 				server.middlewareRateLimit(server.HandleGetThreadView, 100, "get-threadview"),
 				opts.CorsOriginAllow,

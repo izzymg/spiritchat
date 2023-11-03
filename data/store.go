@@ -58,10 +58,10 @@ type Store interface {
 	GetCategory(ctx context.Context, catName string) (*Category, error)
 
 	/*
-		GetCatView returns information about a category, and all the threads on it.
+		GetCategoryView returns information about a category, and all the threads on it.
 		May return an ErrNotFound if the given category name is invalid.
 	*/
-	GetCatView(ctx context.Context, catName string) (*CatView, error)
+	GetCategoryView(ctx context.Context, catName string) (*CatView, error)
 
 	/*
 		Creates a post.
@@ -321,7 +321,7 @@ func (store *DataStore) GetCategory(ctx context.Context, catName string) (*Categ
 	return nil, ErrNotFound
 }
 
-func (store *DataStore) GetCatView(ctx context.Context, catName string) (*CatView, error) {
+func (store *DataStore) GetCategoryView(ctx context.Context, catName string) (*CatView, error) {
 	cat, err := store.GetCategory(ctx, catName)
 	if err != nil {
 		return nil, err
