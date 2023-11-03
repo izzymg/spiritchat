@@ -31,10 +31,8 @@ func (server *Server) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 // Listen starts the server listening process until the context is cancelled (blocks).
 func (server *Server) Listen(ctx context.Context) error {
 	go server.httpServer.ListenAndServe()
-	select {
-	case <-ctx.Done():
-		return server.httpServer.Shutdown(context.Background())
-	}
+	<-ctx.Done()
+	return server.httpServer.Shutdown(context.Background())
 }
 
 // HandleGetCategories handles a GET request for information on categories.
