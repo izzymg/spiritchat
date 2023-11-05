@@ -81,7 +81,8 @@ func getRateLimitResourceID(identifier string, resource string) string {
 
 // Category contains JSON information describing a Category for posts.
 type Category struct {
-	Name string `json:"name"`
+	Name      string `json:"name"`
+	PostCount int    `json:"postCount"`
 }
 
 // Post contains JSON information describing a thread, or reply to a thread.
@@ -306,7 +307,7 @@ func (store *DataStore) GetThreadView(ctx context.Context, catName string, threa
 func (store *DataStore) GetCategory(ctx context.Context, catName string) (*Category, error) {
 	rows, err := store.pgPool.Query(
 		ctx,
-		"SELECT name FROM cats WHERE name = $1",
+		"SELECT name, post_count FROM cats WHERE name = $1",
 		catName,
 	)
 	if err != nil {
@@ -316,7 +317,7 @@ func (store *DataStore) GetCategory(ctx context.Context, catName string) (*Categ
 
 	var cat Category
 	if rows.Next() {
-		rows.Scan(&cat.Name)
+		rows.Scan(&cat.Name, &cat.PostCount)
 		return &cat, nil
 	}
 	return nil, ErrNotFound
