@@ -18,10 +18,30 @@ type request struct {
 	ip         string // Priority: X-Forwarded-For > X-Real-IP -> Remote Addr
 }
 
-type respondFunc func(status int, jsonObj interface{}, message string)
+type response struct {
+	rw http.ResponseWriter
+}
+
+func (r *response) Respond(status int, jsonObj interface{}, message string) {
+	r.rw.WriteHeader(status)
+	if jsonObj == nil {
+		_, err := fmt.Fprintln(r.rw, message)
+		if err != nil {
+			r.rw.Header().Set("content-type", "text/plain")
+			log.Printf("failed to write text response: %v", err)
+		}
+		return
+	}
+
+	err := json.NewEncoder(r.rw).Encode(jsonObj)
+	if err != nil {
+		r.rw.Header().Set("content-type", "application/json")
+		log.Printf("failed to write JSON response: %v", err)
+	}
+}
 
 // Simplified HTTP handler function
-type handlerFunc func(ctx context.Context, req *request, respond respondFunc)
+type handlerFunc func(ctx context.Context, req *request, respond *response)
 
 // Takes a custom handler function and returns an httprouter handler
 func makeHandler(handler handlerFunc) httprouter.Handle {
@@ -46,22 +66,8 @@ func makeHandler(handler handlerFunc) httprouter.Handle {
 				rawRequest: req,
 				ip:         ip,
 			},
-			func(status int, jsonObj interface{}, message string) {
-				rw.WriteHeader(status)
-				if jsonObj == nil {
-					_, err := fmt.Fprintln(rw, message)
-					if err != nil {
-						rw.Header().Set("content-type", "text/plain")
-						log.Printf("failed to write text response: %v", err)
-					}
-					return
-				}
-
-				err := json.NewEncoder(rw).Encode(jsonObj)
-				if err != nil {
-					rw.Header().Set("content-type", "application/json")
-					log.Printf("failed to write JSON response: %v", err)
-				}
+			&response{
+				rw: rw,
 			},
 		)
 	}

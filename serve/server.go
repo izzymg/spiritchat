@@ -36,67 +36,67 @@ func (server *Server) Listen(ctx context.Context) error {
 }
 
 // HandleGetCategories handles a GET request for information on categories.
-func (server *Server) HandleGetCategories(ctx context.Context, req *request, respond respondFunc) {
+func (server *Server) HandleGetCategories(ctx context.Context, req *request, res *response) {
 	categories, err := server.store.GetCategories(ctx)
 	if err != nil {
-		respond(
+		res.Respond(
 			http.StatusInternalServerError, nil, genericFailMessage,
 		)
 		log.Println(err)
 		return
 	}
 
-	respond(http.StatusOK, categories, "")
+	res.Respond(http.StatusOK, categories, "")
 }
 
 // HandleGetCategoryView handles a GET request for information on a single category.
-func (server *Server) HandleGetCategoryView(ctx context.Context, req *request, respond respondFunc) {
+func (server *Server) HandleGetCategoryView(ctx context.Context, req *request, res *response) {
 	view, err := server.store.GetCategoryView(ctx, req.params.ByName("cat"))
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			respond(
+			res.Respond(
 				http.StatusNotFound,
 				nil, err.Error(),
 			)
 			return
 		}
-		respond(
+		res.Respond(
 			http.StatusInternalServerError, nil, genericFailMessage,
 		)
 		log.Println(err)
 		return
 	}
 
-	respond(http.StatusOK, view, "")
+	res.Respond(http.StatusOK, view, "")
 }
 
 // HandleGetThreadView handles a GET request for information on a thread.
-func (server *Server) HandleGetThreadView(ctx context.Context, req *request, respond respondFunc) {
+func (server *Server) HandleGetThreadView(ctx context.Context, req *request, res *response) {
 	threadNum, err := strconv.Atoi(req.params.ByName("thread"))
 	if err != nil {
-		respond(http.StatusBadRequest, nil, "Invalid thread number")
+		res.Respond(http.StatusBadRequest, nil, "Invalid thread number")
 		return
 	}
 	threadView, err := server.store.GetThreadView(ctx, req.params.ByName("cat"), threadNum)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			respond(http.StatusNotFound, nil, err.Error())
+			res.Respond(http.StatusNotFound, nil, err.Error())
 			return
 		}
-		respond(http.StatusInternalServerError, nil, genericFailMessage)
+		res.Respond(http.StatusInternalServerError, nil, genericFailMessage)
 		log.Println(err)
 		return
 	}
 
-	respond(http.StatusOK, threadView, "")
+	res.Respond(http.StatusOK, threadView, "")
 }
 
 // HandleWritePost handles a POST request to post a new post.
-func (server *Server) HandleWritePost(ctx context.Context, req *request, respond respondFunc) {
+func (server *Server) HandleWritePost(ctx context.Context, req *request, res *response) {
 	catName := req.params.ByName("cat")
 	threadNumber, err := strconv.Atoi(req.params.ByName("thread"))
 	if err != nil {
-		respond(
+		res.Respond(
 			http.StatusBadRequest,
 			nil, "Invalid thread number",
 		)
@@ -106,18 +106,18 @@ func (server *Server) HandleWritePost(ctx context.Context, req *request, respond
 	// Decode body and write post
 	userPost := &data.UserPost{}
 	if req.rawRequest.Body == nil {
-		respond(http.StatusBadRequest, nil, "no post provided")
+		res.Respond(http.StatusBadRequest, nil, "no post provided")
 		return
 	}
 	err = json.NewDecoder(req.rawRequest.Body).Decode(userPost)
 	if err != nil {
-		respond(http.StatusBadRequest, nil, "bad formatting")
+		res.Respond(http.StatusBadRequest, nil, "bad formatting")
 		return
 	}
 
 	content, errMessage := data.CheckContent(userPost.Content)
 	if len(errMessage) > 0 {
-		respond(
+		res.Respond(
 			http.StatusBadRequest,
 			nil, errMessage,
 		)
@@ -128,17 +128,17 @@ func (server *Server) HandleWritePost(ctx context.Context, req *request, respond
 	err = server.store.WritePost(ctx, catName, threadNumber, userPost)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
-			respond(http.StatusNotFound, nil, err.Error())
+			res.Respond(http.StatusNotFound, nil, err.Error())
 			return
 		}
-		respond(
+		res.Respond(
 			http.StatusInternalServerError, nil, postFailMessage,
 		)
 		log.Printf("Failed to save new post request: %s", err)
 		return
 	}
 
-	respond(http.StatusOK, ok{Message: "Post submitted"}, "")
+	res.Respond(http.StatusOK, ok{Message: "Post submitted"}, "")
 }
 
 // Handle handleCORSPreflight pre-flighting
@@ -152,34 +152,34 @@ func handleCORSPreflight(allowedOrigin string) http.HandlerFunc {
 }
 
 func (s *Server) middlewareCORS(hand handlerFunc, allowedOrigin string) handlerFunc {
-	return func(ctx context.Context, req *request, respond respondFunc) {
-		req.header.Set("Access-Control-Allow-Origin", allowedOrigin)
-		hand(ctx, req, respond)
+	return func(ctx context.Context, req *request, res *response) {
+		res.rw.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+		hand(ctx, req, res)
 	}
 }
 
 func (s *Server) middlewareRateLimit(hand handlerFunc, ms int, resource string) handlerFunc {
-	return func(ctx context.Context, req *request, respond respondFunc) {
+	return func(ctx context.Context, req *request, res *response) {
 		isLimited, err := s.store.IsRateLimited(req.ip, resource)
 		if err != nil {
-			respond(http.StatusInternalServerError, nil, "internal server error")
+			res.Respond(http.StatusInternalServerError, nil, "internal server error")
 			log.Printf("Failed to fetch rate limit info: %s", err)
 			return
 		}
 
 		if isLimited {
-			respond(http.StatusTooManyRequests, nil, "Rate limited")
+			res.Respond(http.StatusTooManyRequests, nil, "Rate limited")
 			return
 		}
 
 		err = s.store.RateLimit(req.ip, resource, ms)
 		if err != nil {
-			respond(http.StatusInternalServerError, nil, "internal server error")
+			res.Respond(http.StatusInternalServerError, nil, "internal server error")
 			log.Printf("Failed to rate limit: %s", err)
 			return
 		}
 
-		hand(ctx, req, respond)
+		hand(ctx, req, res)
 	}
 }
 

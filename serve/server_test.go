@@ -123,8 +123,8 @@ func TestMiddlewareRateLimit(t *testing.T) {
 
 	okStatus := http.StatusTeapot
 	okText := "all g"
-	okHandler := func(ctx context.Context, req *request, respond respondFunc) {
-		respond(okStatus, nil, okText)
+	okHandler := func(ctx context.Context, req *request, res *response) {
+		res.Respond(okStatus, nil, okText)
 	}
 
 	handler := makeHandler(server.middlewareRateLimit(okHandler, 0, "dogs"))
