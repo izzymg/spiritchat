@@ -6,13 +6,13 @@ COPY . .
 
 RUN go mod verify && GOOS=linux GOARCH=386 go build -o /app/spirit
 
-FROM scratch
+FROM debian
 
 WORKDIR /app
 
-COPY --from=builder /app/spirit /app/spirit
-COPY --from=builder /app/db /app/
-COPY --from=builder /app/db/ /app/
+COPY --from=builder app/spirit /app/spirit
+COPY --from=builder app/db/ /app/db/
+RUN ls /app/db
 
 EXPOSE 3000
 
