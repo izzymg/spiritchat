@@ -233,7 +233,7 @@ func (store *DataStore) GetThreadCount(ctx context.Context, categoryTag string) 
 func (store *DataStore) GetCategories(ctx context.Context) ([]*Category, error) {
 	rows, err := store.pgPool.Query(
 		ctx,
-		"SELECT tag, name FROM cats",
+		"SELECT tag, name, post_count FROM cats",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query categories: %w", err)
@@ -243,7 +243,7 @@ func (store *DataStore) GetCategories(ctx context.Context) ([]*Category, error) 
 	var cats []*Category = make([]*Category, 0)
 	for rows.Next() {
 		var c Category
-		err := rows.Scan(&c.Tag, &c.Name)
+		err := rows.Scan(&c.Tag, &c.Name, &c.PostCount)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse a queried category: %w", err)
 		}
