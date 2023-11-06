@@ -198,7 +198,7 @@ func integration_GetCategories(ctx context.Context, store *DataStore) func(t *te
 				for i := 0; i < len(categoryNames); i++ {
 					has := false
 					for j := 0; j < len(cats); j++ {
-						if cats[j].Name == categoryNames[i] {
+						if cats[j].Tag == categoryNames[i] {
 							has = true
 						}
 					}
@@ -214,7 +214,7 @@ func integration_GetCategories(ctx context.Context, store *DataStore) func(t *te
 func integration_GetCategoryView(ctx context.Context, store *DataStore) func(t *testing.T) {
 	return func(t *testing.T) {
 
-		testCategories := []string{"test-catview"}
+		testCategories := []string{"test"}
 		threadCount := 5
 
 		// store a category
@@ -249,8 +249,8 @@ func integration_GetCategoryView(ctx context.Context, store *DataStore) func(t *
 		if len(view.Threads) != threadCount {
 			t.Errorf("expected %d threads, got %d", threadCount, len(view.Threads))
 		}
-		if view.Category.Name != testCategories[0] {
-			t.Errorf("expected category name %s, got %s: ", testCategories[0], view.Category.Name)
+		if view.Category.Tag != testCategories[0] {
+			t.Errorf("expected category tag %s, got %s: ", testCategories[0], view.Category.Tag)
 		}
 	}
 }

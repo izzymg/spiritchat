@@ -25,16 +25,16 @@ type Store interface {
 	RateLimit(identifier string, resource string, ms int) error
 
 	// WriteCategory adds a new category to the database.
-	WriteCategory(ctx context.Context, catName string) error
+	WriteCategory(ctx context.Context, categoryTag string) error
 
 	/*
-		RemoveCategory removes all posts under category catName and removes the category.
+		RemoveCategory removes all posts under category categoryTag and removes the category.
 		Returns affected rows.
 	*/
-	RemoveCategory(ctx context.Context, catName string) (int64, error)
+	RemoveCategory(ctx context.Context, categoryTag string) (int64, error)
 
 	// GetThreadCount returns the number of threads in a category.
-	GetThreadCount(ctx context.Context, catName string) (int, error)
+	GetThreadCount(ctx context.Context, categoryTag string) (int, error)
 
 	// GetCategories returns all categories.
 	GetCategories(ctx context.Context) ([]*Category, error)
@@ -43,33 +43,33 @@ type Store interface {
 		GetPostByNumber returns a post in a category by its number.
 		Should return ErrNotFound if no such post.
 	*/
-	GetPostByNumber(ctx context.Context, catName string, num int) (*Post, error)
+	GetPostByNumber(ctx context.Context, categoryTag string, num int) (*Post, error)
 
 	/*
 		GetThreadView returns all the posts in a thread, and the category they're on.
 		Should return ErrNotFound if the requested thread is not an OP thread, or the category
 		is invalid
 	*/
-	GetThreadView(ctx context.Context, catName string, threadNum int) (*ThreadView, error)
+	GetThreadView(ctx context.Context, categoryTag string, threadNum int) (*ThreadView, error)
 
 	/*
 		GetCategory returns a single category. May return ErrNotFound if the given category
 		name is invalid.
 	*/
-	GetCategory(ctx context.Context, catName string) (*Category, error)
+	GetCategory(ctx context.Context, categoryTag string) (*Category, error)
 
 	/*
 		GetCategoryView returns information about a category, and all the threads on it.
 		May return an ErrNotFound if the given category name is invalid.
 	*/
-	GetCategoryView(ctx context.Context, catName string) (*CatView, error)
+	GetCategoryView(ctx context.Context, categoryTag string) (*CatView, error)
 
 	/*
 		Creates a post.
 		Optional parent thread can be provided if it's a reply.
 		Should return ErrNotFound if invalid post or category.
 	*/
-	WritePost(ctx context.Context, catName string, parentThreadNumber int, p *UserPost) error
+	WritePost(ctx context.Context, categoryTag string, parentThreadNumber int, p *UserPost) error
 }
 
 var ErrNotFound = errors.New("not found")
@@ -81,6 +81,7 @@ func getRateLimitResourceID(identifier string, resource string) string {
 
 // Category contains JSON information describing a Category for posts.
 type Category struct {
+	Tag       string `json:"tag"`
 	Name      string `json:"name"`
 	PostCount int    `json:"postCount"`
 }
@@ -192,39 +193,39 @@ func (store *DataStore) RateLimit(identifier string, resource string, ms int) er
 	return err
 }
 
-func (store *DataStore) WriteCategory(ctx context.Context, catName string) error {
-	_, err := store.pgPool.Exec(ctx, "INSERT INTO cats (name) VALUES ($1)", catName)
+func (store *DataStore) WriteCategory(ctx context.Context, categoryTag string) error {
+	_, err := store.pgPool.Exec(ctx, "INSERT INTO cats (tag) VALUES ($1)", categoryTag)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (store *DataStore) RemoveCategory(ctx context.Context, catName string) (int64, error) {
+func (store *DataStore) RemoveCategory(ctx context.Context, categoryTag string) (int64, error) {
 	var affected int64
 
-	tag, err := store.pgPool.Exec(ctx, "DELETE FROM posts WHERE cat = $1", catName)
+	tag, err := store.pgPool.Exec(ctx, "DELETE FROM posts WHERE cat = $1", categoryTag)
 	if err != nil {
 		return affected, err
 	}
 	affected = tag.RowsAffected()
 
-	tag, err = store.pgPool.Exec(ctx, "DELETE FROM cats WHERE name = $1", catName)
+	tag, err = store.pgPool.Exec(ctx, "DELETE FROM cats WHERE tag = $1", categoryTag)
 	if err != nil {
 		return affected, err
 	}
 	return affected + tag.RowsAffected(), nil
 }
 
-func (store *DataStore) GetThreadCount(ctx context.Context, catName string) (int, error) {
+func (store *DataStore) GetThreadCount(ctx context.Context, categoryTag string) (int, error) {
 	var count int
 	err := store.pgPool.QueryRow(
 		ctx,
 		"SELECT COUNT (*) FROM posts WHERE cat = $1 AND parent = 0",
-		catName,
+		categoryTag,
 	).Scan(&count)
 	if err != nil {
-		return 0, fmt.Errorf("failed to query thread count on %s, %w", catName, err)
+		return 0, fmt.Errorf("failed to query thread count on %s, %w", categoryTag, err)
 	}
 	return count, nil
 }
@@ -232,7 +233,7 @@ func (store *DataStore) GetThreadCount(ctx context.Context, catName string) (int
 func (store *DataStore) GetCategories(ctx context.Context) ([]*Category, error) {
 	rows, err := store.pgPool.Query(
 		ctx,
-		"SELECT name FROM cats",
+		"SELECT tag FROM cats",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query categories: %w", err)
@@ -242,7 +243,7 @@ func (store *DataStore) GetCategories(ctx context.Context) ([]*Category, error) 
 	var cats []*Category = make([]*Category, 0)
 	for rows.Next() {
 		var c Category
-		err := rows.Scan(&c.Name)
+		err := rows.Scan(&c.Tag)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse a queried category: %w", err)
 		}
@@ -251,11 +252,11 @@ func (store *DataStore) GetCategories(ctx context.Context) ([]*Category, error) 
 	return cats, nil
 }
 
-func (store *DataStore) GetPostByNumber(ctx context.Context, catName string, num int) (*Post, error) {
+func (store *DataStore) GetPostByNumber(ctx context.Context, categoryTag string, num int) (*Post, error) {
 	row := store.pgPool.QueryRow(
 		ctx,
 		"SELECT num, cat, content, parent, created_at FROM posts WHERE cat = $1 AND num = $2",
-		catName,
+		categoryTag,
 		num,
 	)
 
@@ -270,12 +271,12 @@ func (store *DataStore) GetPostByNumber(ctx context.Context, catName string, num
 	return &p, nil
 }
 
-func (store *DataStore) GetThreadView(ctx context.Context, catName string, threadNum int) (*ThreadView, error) {
+func (store *DataStore) GetThreadView(ctx context.Context, categoryTag string, threadNum int) (*ThreadView, error) {
 
 	replyRows, err := store.pgPool.Query(
 		ctx,
 		"select num, cat, content, parent, created_at FROM posts WHERE cat = $1 AND (num = $2 or parent = $2) ORDER BY NUM ASC;",
-		catName,
+		categoryTag,
 		threadNum,
 	)
 	if err != nil {
@@ -298,33 +299,35 @@ func (store *DataStore) GetThreadView(ctx context.Context, catName string, threa
 
 	return &ThreadView{
 		Category: &Category{
-			Name: catName,
+			Name: categoryTag,
 		},
 		Posts: posts,
 	}, nil
 }
 
-func (store *DataStore) GetCategory(ctx context.Context, catName string) (*Category, error) {
+func (store *DataStore) GetCategory(ctx context.Context, categoryTag string) (*Category, error) {
 	rows, err := store.pgPool.Query(
 		ctx,
-		"SELECT name, post_count FROM cats WHERE name = $1",
-		catName,
+		"SELECT name, post_count FROM cats WHERE tag = $1",
+		categoryTag,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query a category: %w", err)
 	}
 	defer rows.Close()
 
-	var cat Category
+	cat := &Category{
+		Tag: categoryTag,
+	}
 	if rows.Next() {
 		rows.Scan(&cat.Name, &cat.PostCount)
-		return &cat, nil
+		return cat, nil
 	}
 	return nil, ErrNotFound
 }
 
-func (store *DataStore) GetCategoryView(ctx context.Context, catName string) (*CatView, error) {
-	cat, err := store.GetCategory(ctx, catName)
+func (store *DataStore) GetCategoryView(ctx context.Context, categoryTag string) (*CatView, error) {
+	cat, err := store.GetCategory(ctx, categoryTag)
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +335,7 @@ func (store *DataStore) GetCategoryView(ctx context.Context, catName string) (*C
 	rows, err := store.pgPool.Query(
 		ctx,
 		"SELECT num, cat, content, created_at FROM posts WHERE cat = $1 AND parent = 0 ORDER BY num ASC",
-		catName,
+		categoryTag,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query category threads: %w", err)
@@ -354,11 +357,11 @@ func (store *DataStore) GetCategoryView(ctx context.Context, catName string) (*C
 	}, nil
 }
 
-func (store *DataStore) WritePost(ctx context.Context, catName string, parentThreadNumber int, p *UserPost) error {
+func (store *DataStore) WritePost(ctx context.Context, categoryTag string, parentThreadNumber int, p *UserPost) error {
 	_, err := store.pgPool.Exec(
 		ctx,
 		"CALL write_post($1, $2::int, $3)",
-		catName,
+		categoryTag,
 		parentThreadNumber,
 		p.Content,
 	)
