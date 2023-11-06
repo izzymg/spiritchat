@@ -23,19 +23,20 @@ type response struct {
 }
 
 func (r *response) Respond(status int, jsonObj interface{}, message string) {
-	r.rw.WriteHeader(status)
 	if jsonObj == nil {
+		r.rw.Header().Set("content-type", "text/plain")
+		r.rw.WriteHeader(status)
 		_, err := fmt.Fprintln(r.rw, message)
 		if err != nil {
-			r.rw.Header().Set("content-type", "text/plain")
 			log.Printf("failed to write text response: %v", err)
 		}
 		return
 	}
 
+	r.rw.Header().Set("content-type", "application/json")
+	r.rw.WriteHeader(status)
 	err := json.NewEncoder(r.rw).Encode(jsonObj)
 	if err != nil {
-		r.rw.Header().Set("content-type", "application/json")
 		log.Printf("failed to write JSON response: %v", err)
 	}
 }
