@@ -153,7 +153,7 @@ func integration_GetPostByNumber(ctx context.Context, store *DataStore) func(t *
 		defer removeTestCategories(ctx, store, testCategories)
 
 		testPost := createTestUserPost()
-		for tag, _ := range testCategories {
+		for tag := range testCategories {
 			err = store.WritePost(ctx, tag, 0, testPost)
 			if err != nil {
 				t.Error(err)
@@ -205,7 +205,7 @@ func integration_GetCategories(ctx context.Context, store *DataStore) func(t *te
 				for i := 0; i < len(cats); i++ {
 					has := false
 
-					for tag, _ := range categories {
+					for tag := range categories {
 						if cats[i].Tag == tag {
 							has = true
 						}
@@ -346,7 +346,7 @@ func createTestCategories(ctx context.Context, datastore *DataStore, categorys m
 }
 
 func removeTestCategories(ctx context.Context, datastore *DataStore, tags map[string]string) error {
-	for tag, _ := range tags {
+	for tag := range tags {
 		_, err := datastore.RemoveCategory(ctx, tag)
 		if err != nil {
 			return err
