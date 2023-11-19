@@ -37,7 +37,7 @@ func (ms *MockStore) RateLimit(identifier string, resource string, _ int) error 
 }
 
 // WriteCategory adds a new category to the database.
-func (ms *MockStore) WriteCategory(ctx context.Context, catName string) error {
+func (ms *MockStore) WriteCategory(ctx context.Context, tag string, name string) error {
 	panic("not implemented") // TODO: Implement
 }
 

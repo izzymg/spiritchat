@@ -89,11 +89,11 @@ func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *te
 			t.Errorf("expected ErrNotFound, got: %v", err)
 		}
 
-		testCategories := []string{"bbb", "vvv", "ccc"}
+		testCategories := map[string]string{"bbb": "vvv", "vvv": "ccc", "ccc": "ddd"}
 		tests := map[string]int{
-			testCategories[0]: 5,
-			testCategories[1]: 15,
-			testCategories[2]: 0,
+			"bbb": 5,
+			"vvv": 15,
+			"ccc": 0,
 		}
 
 		err = createTestCategories(ctx, store, testCategories)
@@ -110,10 +110,10 @@ func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *te
 
 		testPost := createTestUserPost()
 		opCount := 3
-		for categoryName, replyCount := range tests {
+		for tag, replyCount := range tests {
 			// create OPs
 			for i := 0; i < opCount; i++ {
-				err := store.WritePost(ctx, categoryName, 0, testPost)
+				err := store.WritePost(ctx, tag, 0, testPost)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -122,13 +122,13 @@ func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *te
 			opNum := opCount - 1
 			// create replies to an op
 			for i := 0; i < replyCount; i++ {
-				err := store.WritePost(ctx, categoryName, opNum, testPost)
+				err := store.WritePost(ctx, tag, opNum, testPost)
 				if err != nil {
 					t.Fatal(err)
 				}
 			}
 
-			view, err := store.GetThreadView(ctx, categoryName, opNum)
+			view, err := store.GetThreadView(ctx, tag, opNum)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -142,7 +142,10 @@ func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *te
 func integration_GetPostByNumber(ctx context.Context, store *DataStore) func(t *testing.T) {
 	return func(t *testing.T) {
 
-		testCategories := []string{"beepboop", "bonk"}
+		testCategories := map[string]string{
+			"beep": "boop",
+			"bonk": "fonk",
+		}
 		err := createTestCategories(ctx, store, testCategories)
 		if err != nil {
 			t.Error(err)
@@ -150,12 +153,12 @@ func integration_GetPostByNumber(ctx context.Context, store *DataStore) func(t *
 		defer removeTestCategories(ctx, store, testCategories)
 
 		testPost := createTestUserPost()
-		for _, categoryName := range testCategories {
-			err = store.WritePost(ctx, categoryName, 0, testPost)
+		for tag, _ := range testCategories {
+			err = store.WritePost(ctx, tag, 0, testPost)
 			if err != nil {
 				t.Error(err)
 			}
-			post, err := store.GetPostByNumber(ctx, categoryName, 1)
+			post, err := store.GetPostByNumber(ctx, tag, 1)
 			if err != nil {
 				t.Error(err)
 			}
@@ -175,35 +178,40 @@ func integration_GetPostByNumber(ctx context.Context, store *DataStore) func(t *
 
 func integration_GetCategories(ctx context.Context, store *DataStore) func(t *testing.T) {
 	return func(t *testing.T) {
-		tests := map[string][]string{
-			"Some categories": {"beep", "boop", "bop"},
-			"No categories":   {},
+		tests := map[string]map[string]string{
+			"Some categories": {
+				"xxxx": "zzzz",
+				"aaaa": "bbbb",
+				"vvvv": "eeeee",
+			},
+			"No categories": {},
 		}
 
-		for name, categoryNames := range tests {
+		for name, categories := range tests {
 			t.Run(name, func(t *testing.T) {
-				err := createTestCategories(ctx, store, categoryNames)
+				err := createTestCategories(ctx, store, categories)
 				if err != nil {
 					t.Error(err)
 				}
-				defer removeTestCategories(ctx, store, categoryNames)
+				defer removeTestCategories(ctx, store, categories)
 
 				cats, err := store.GetCategories(ctx)
 				if err != nil {
 					t.Error(err)
 				}
-				if len(cats) != len(categoryNames) {
-					t.Errorf("expected %d categories, got: %d %v", len(categoryNames), len(cats), cats)
+				if len(cats) != len(categories) {
+					t.Errorf("expected %d categories, got: %d %v", len(categories), len(cats), cats)
 				}
-				for i := 0; i < len(categoryNames); i++ {
+				for i := 0; i < len(cats); i++ {
 					has := false
-					for j := 0; j < len(cats); j++ {
-						if cats[j].Tag == categoryNames[i] {
+
+					for tag, _ := range categories {
+						if cats[i].Tag == tag {
 							has = true
 						}
 					}
 					if !has {
-						t.Errorf("returned categories does not have value: %s", categoryNames[i])
+						t.Error("mismatch in returned categories")
 					}
 				}
 			})
@@ -214,7 +222,8 @@ func integration_GetCategories(ctx context.Context, store *DataStore) func(t *te
 func integration_GetCategoryView(ctx context.Context, store *DataStore) func(t *testing.T) {
 	return func(t *testing.T) {
 
-		testCategories := []string{"test"}
+		catName := "beep"
+		testCategories := map[string]string{catName: "best"}
 		threadCount := 5
 
 		// store a category
@@ -226,20 +235,20 @@ func integration_GetCategoryView(ctx context.Context, store *DataStore) func(t *
 
 		// write a thread into the category
 		for i := 0; i < threadCount; i++ {
-			err = store.WritePost(ctx, testCategories[0], 0, createTestUserPost())
+			err = store.WritePost(ctx, catName, 0, createTestUserPost())
 			if err != nil {
 				t.Error(err)
 			}
 		}
 
 		// write a reply to that post
-		err = store.WritePost(ctx, testCategories[0], 1, createTestUserPost())
+		err = store.WritePost(ctx, catName, 1, createTestUserPost())
 		if err != nil {
 			t.Error(err)
 		}
 
 		// GetCategoryView should return the category, the post, but no replies
-		view, err := store.GetCategoryView(ctx, testCategories[0])
+		view, err := store.GetCategoryView(ctx, catName)
 		if err != nil {
 			t.Error(err)
 		}
@@ -249,8 +258,8 @@ func integration_GetCategoryView(ctx context.Context, store *DataStore) func(t *
 		if len(view.Threads) != threadCount {
 			t.Errorf("expected %d threads, got %d", threadCount, len(view.Threads))
 		}
-		if view.Category.Tag != testCategories[0] {
-			t.Errorf("expected category tag %s, got %s: ", testCategories[0], view.Category.Tag)
+		if view.Category.Tag != catName {
+			t.Errorf("expected category tag %s, got %s: ", catName, view.Category.Tag)
 		}
 	}
 }
@@ -262,13 +271,13 @@ func integration_ConcurrentThreadWrites(ctx context.Context, store *DataStore) f
 			"test-2": 22,
 			"test-3": 10,
 		}
-		categoryNames := []string{"test-1", "test-2", "test-3"}
+		testCategories := map[string]string{"test-1": "aa", "test-2": "bb", "test-3": "cc"}
 
-		err := createTestCategories(ctx, store, categoryNames)
+		err := createTestCategories(ctx, store, testCategories)
 		if err != nil {
 			t.Error(err)
 		}
-		defer removeTestCategories(ctx, store, categoryNames)
+		defer removeTestCategories(ctx, store, testCategories)
 
 		t.Run("Concurent thread writes", concurrentThreadWriteTest(ctx, store, categoryThreadCountMap))
 	}
@@ -291,25 +300,27 @@ func integration_WritePosts(ctx context.Context, datastore *DataStore) func(t *t
 		})
 
 		t.Run("valid category, valid thread", func(t *testing.T) {
-			testCategories := []string{"test-cat"}
+			name := "BEEW"
+			testCategories := map[string]string{name: "meowmeow"}
 			err := createTestCategories(ctx, datastore, testCategories)
 			if err != nil {
 				t.Error(err)
 			}
 			defer removeTestCategories(ctx, datastore, testCategories)
 
-			err = datastore.WritePost(ctx, testCategories[0], 0, createTestUserPost())
+			err = datastore.WritePost(ctx, name, 0, createTestUserPost())
 			if err != nil {
 				t.Errorf("expected no error, got: %v", err)
 			}
 		})
 
 		t.Run("valid category, invalid parent post", func(t *testing.T) {
-			testCategories := []string{"test-cat"}
+			name := "BEEW"
+			testCategories := map[string]string{name: "meow"}
 			createTestCategories(ctx, datastore, testCategories)
 			defer removeTestCategories(ctx, datastore, testCategories)
 
-			err := datastore.WritePost(ctx, testCategories[0], 5, createTestUserPost())
+			err := datastore.WritePost(ctx, name, 5, createTestUserPost())
 			if err == nil || !errors.Is(err, ErrNotFound) {
 				t.Errorf("expected ErrNotFound, got: %v", err)
 			}
@@ -324,9 +335,9 @@ func createTestUserPost() *UserPost {
 	}
 }
 
-func createTestCategories(ctx context.Context, datastore *DataStore, categoryNames []string) error {
-	for _, categoryName := range categoryNames {
-		err := datastore.WriteCategory(ctx, categoryName)
+func createTestCategories(ctx context.Context, datastore *DataStore, categorys map[string]string) error {
+	for tag, name := range categorys {
+		err := datastore.WriteCategory(ctx, tag, name)
 		if err != nil {
 			return err
 		}
@@ -334,9 +345,9 @@ func createTestCategories(ctx context.Context, datastore *DataStore, categoryNam
 	return nil
 }
 
-func removeTestCategories(ctx context.Context, datastore *DataStore, categoryNames []string) error {
-	for _, categoryName := range categoryNames {
-		_, err := datastore.RemoveCategory(ctx, categoryName)
+func removeTestCategories(ctx context.Context, datastore *DataStore, tags map[string]string) error {
+	for tag, _ := range tags {
+		_, err := datastore.RemoveCategory(ctx, tag)
 		if err != nil {
 			return err
 		}

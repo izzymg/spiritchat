@@ -25,7 +25,7 @@ type Store interface {
 	RateLimit(identifier string, resource string, ms int) error
 
 	// WriteCategory adds a new category to the database.
-	WriteCategory(ctx context.Context, categoryTag string) error
+	WriteCategory(ctx context.Context, categoryTag string, categoryName string) error
 
 	/*
 		RemoveCategory removes all posts under category categoryTag and removes the category.
@@ -193,8 +193,8 @@ func (store *DataStore) RateLimit(identifier string, resource string, ms int) er
 	return err
 }
 
-func (store *DataStore) WriteCategory(ctx context.Context, categoryTag string) error {
-	_, err := store.pgPool.Exec(ctx, "INSERT INTO cats (tag) VALUES ($1)", categoryTag)
+func (store *DataStore) WriteCategory(ctx context.Context, categoryTag string, categoryName string) error {
+	_, err := store.pgPool.Exec(ctx, "INSERT INTO cats (tag, name) VALUES ($1, $2)", categoryTag, categoryName)
 	if err != nil {
 		return err
 	}
@@ -273,10 +273,15 @@ func (store *DataStore) GetPostByNumber(ctx context.Context, categoryTag string,
 
 func (store *DataStore) GetThreadView(ctx context.Context, categoryTag string, threadNum int) (*ThreadView, error) {
 
+	category, err := store.GetCategory(ctx, categoryTag)
+	if err != nil {
+		return nil, err
+	}
+
 	replyRows, err := store.pgPool.Query(
 		ctx,
 		"select num, cat, content, parent, created_at FROM posts WHERE cat = $1 AND (num = $2 or parent = $2) ORDER BY NUM ASC;",
-		categoryTag,
+		category.Tag,
 		threadNum,
 	)
 	if err != nil {
@@ -298,10 +303,8 @@ func (store *DataStore) GetThreadView(ctx context.Context, categoryTag string, t
 	}
 
 	return &ThreadView{
-		Category: &Category{
-			Name: categoryTag,
-		},
-		Posts: posts,
+		Category: category,
+		Posts:    posts,
 	}, nil
 }
 
