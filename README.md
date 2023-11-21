@@ -19,7 +19,7 @@ Use `launch.json` to run, and run up/down migration tests
 
 ### Environment variables
 
-`SPIRITCHAT_PG_URL` `SPIRITCHAT_REDIS_URL` `SPIRITCHAT_ADDR` `SPIRITCHAT_CORS_ALLOW`
+`SPIRITCHAT_PG_URL` `SPIRITCHAT_REDIS_URL` `SPIRITCHAT_ADDRESS` `SPIRITCHAT_CORS_ALLOW`
 
 
 #### Integration tests
