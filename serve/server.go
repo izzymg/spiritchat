@@ -209,7 +209,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 	)
 
 	router.GET(
-		"/v1",
+		"/v1/categories",
 		makeHandler(
 			server.middlewareCORS(
 				server.middlewareRateLimit(server.HandleGetCategories, 100, "get-cats"),
@@ -218,7 +218,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 		),
 	)
 	router.GET(
-		"/v1/:cat",
+		"/v1/categories/:cat",
 		makeHandler(
 			server.middlewareCORS(
 				server.middlewareRateLimit(server.HandleGetCategoryView, 100, "get-catview"), opts.CorsOriginAllow,
@@ -226,7 +226,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 		),
 	)
 	router.POST(
-		"/v1/:cat/:thread",
+		"/v1/categories/:cat/:thread",
 		makeHandler(
 			server.middlewareCORS(
 				server.middlewareRateLimit(server.HandleWritePost, server.postCooldownMs, "post-post"),
@@ -235,7 +235,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 		),
 	)
 	router.GET(
-		"/v1/:cat/:thread",
+		"/v1/categories/:cat/:thread",
 		makeHandler(
 			server.middlewareCORS(
 				server.middlewareRateLimit(server.HandleGetThreadView, 100, "get-threadview"),
