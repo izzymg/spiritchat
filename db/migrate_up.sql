@@ -34,7 +34,8 @@ $write_post$ LANGUAGE plpgsql;
 -- Categories
 CREATE TABLE IF NOT EXISTS cats (
     tag                     text,
-    name                    text,
+    name                    text NOT NULL DEFAULT '',
+    description             text NOT NULL DEFAULT '',
     post_count              integer NOT NULL DEFAULT 1,
     CONSTRAINT cat_tag      PRIMARY KEY(tag)
 );

@@ -81,9 +81,10 @@ func getRateLimitResourceID(identifier string, resource string) string {
 
 // Category contains JSON information describing a Category for posts.
 type Category struct {
-	Tag       string `json:"tag"`
-	Name      string `json:"name"`
-	PostCount int    `json:"postCount"`
+	Tag         string `json:"tag"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	PostCount   int    `json:"postCount"`
 }
 
 // Post contains JSON information describing a thread, or reply to a thread.
@@ -233,7 +234,7 @@ func (store *DataStore) GetThreadCount(ctx context.Context, categoryTag string) 
 func (store *DataStore) GetCategories(ctx context.Context) ([]*Category, error) {
 	rows, err := store.pgPool.Query(
 		ctx,
-		"SELECT tag, name, post_count FROM cats",
+		"SELECT tag, name, description, post_count FROM cats",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query categories: %w", err)
@@ -243,7 +244,7 @@ func (store *DataStore) GetCategories(ctx context.Context) ([]*Category, error) 
 	var cats []*Category = make([]*Category, 0)
 	for rows.Next() {
 		var c Category
-		err := rows.Scan(&c.Tag, &c.Name, &c.PostCount)
+		err := rows.Scan(&c.Tag, &c.Name, &c.Description, &c.PostCount)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse a queried category: %w", err)
 		}
@@ -311,7 +312,7 @@ func (store *DataStore) GetThreadView(ctx context.Context, categoryTag string, t
 func (store *DataStore) GetCategory(ctx context.Context, categoryTag string) (*Category, error) {
 	rows, err := store.pgPool.Query(
 		ctx,
-		"SELECT name, post_count FROM cats WHERE tag = $1",
+		"SELECT name, description, post_count FROM cats WHERE tag = $1",
 		categoryTag,
 	)
 	if err != nil {
@@ -323,7 +324,7 @@ func (store *DataStore) GetCategory(ctx context.Context, categoryTag string) (*C
 		Tag: categoryTag,
 	}
 	if rows.Next() {
-		rows.Scan(&cat.Name, &cat.PostCount)
+		rows.Scan(&cat.Name, &cat.Description, &cat.PostCount)
 		return cat, nil
 	}
 	return nil, ErrNotFound
