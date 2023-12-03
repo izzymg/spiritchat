@@ -211,11 +211,11 @@ func TestRoutes(t *testing.T) {
 				expectedCode: http.StatusNotFound,
 			},
 			"Gategories": {
-				route:        "/v1",
+				route:        "/v1/categories",
 				expectedCode: http.StatusOK,
 			},
 			"Category view (Not Found)": {
-				route:        "/v1/none",
+				route:        "/v1/categories/none",
 				expectedCode: http.StatusNotFound,
 				setup: func(ms *MockStore) {
 					ms.err = data.ErrNotFound
@@ -223,11 +223,11 @@ func TestRoutes(t *testing.T) {
 			},
 			"Category view (Valid)": {
 				expectedCode: http.StatusOK,
-				route:        "/v1/valid",
+				route:        "/v1/categories/valid",
 				setup: func(ms *MockStore) {
 					ms.getCategoryView = &data.CatView{
 						Category: &data.Category{
-							Name: "beep",
+							Tag: "beep",
 						},
 						Threads: []*data.Post{},
 					}
@@ -235,33 +235,33 @@ func TestRoutes(t *testing.T) {
 			},
 			"Thread View (not found)": {
 				expectedCode: http.StatusNotFound,
-				route:        "/v1/nothing/5",
+				route:        "/v1/categories/nothing/5",
 				setup: func(ms *MockStore) {
 					ms.err = data.ErrNotFound
 				},
 			},
 			"Thread View (bad formatting)": {
 				expectedCode: http.StatusBadRequest,
-				route:        "/v1/something/here?",
+				route:        "/v1/categories/something/here?",
 			},
 			"Thread View (valid)": {
 				expectedCode: http.StatusOK,
-				route:        "/v1/something/1",
+				route:        "/v1/categories/something/1",
 			},
 		},
 		"POST": {
 			"Write Thread (bad formatting)": {
 				expectedCode: http.StatusBadRequest,
-				route:        "/v1/cat/beepboop",
+				route:        "/v1/categories/cat/beepboop",
 			},
 			"Write Thread (bad empty thread)": {
 				expectedCode: http.StatusBadRequest,
-				route:        "/v1/cat/1",
+				route:        "/v1/categories/cat/1",
 				body:         []byte(`{"Content": ""}`),
 			},
 			"Write Thread (not found)": {
 				expectedCode: http.StatusNotFound,
-				route:        "/v1/cat/5",
+				route:        "/v1/categories/cat/5",
 				body:         []byte(`{"Content": "hello!"}`),
 				setup: func(ms *MockStore) {
 					ms.err = data.ErrNotFound
@@ -270,7 +270,7 @@ func TestRoutes(t *testing.T) {
 			"Write Thread (valid)": {
 				expectedCode: http.StatusOK,
 				body:         []byte(`{"Content": "hello!"}`),
-				route:        "/v1/cat/1",
+				route:        "/v1/categories/cat/1",
 			},
 		},
 	}
