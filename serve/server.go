@@ -130,15 +130,17 @@ func (server *Server) HandleWritePost(ctx context.Context, req *request, res *re
 		return
 	}
 
-	subject, errMessage := data.CheckSubject(userPost.Subject)
-	if len(errMessage) > 0 {
-		res.Respond(
-			http.StatusBadRequest,
-			nil, errMessage,
-		)
-		return
+	if threadNumber == 0 {
+		subject, errMessage := data.CheckSubject(userPost.Subject)
+		if len(errMessage) > 0 {
+			res.Respond(
+				http.StatusBadRequest,
+				nil, errMessage,
+			)
+			return
+		}
+		userPost.Subject = subject
 	}
-	userPost.Subject = subject
 
 	err = server.store.WritePost(ctx, catName, threadNumber, userPost)
 	if err != nil {
