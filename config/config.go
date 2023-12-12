@@ -8,11 +8,11 @@ import (
 func getPostCooldownEnv(env string) int {
 	env, found := os.LookupEnv(env)
 	if !found {
-		return 30
+		return 0
 	}
 	cooldown, err := strconv.ParseInt(env, 10, 64)
 	if err != nil {
-		return 30
+		return 0
 	}
 	return int(cooldown)
 }
