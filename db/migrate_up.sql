@@ -13,7 +13,7 @@ $check_reply$ LANGUAGE plpgsql;
 
 -- Create a new post, generating a category-specific number for it 
 -- based on the most recent category number.
--- args: category, parent, content
+-- args: category, parent, content, subject
 -- Don't touch the ordering of this or it deadlocks under concurrent load.
 CREATE OR REPLACE PROCEDURE write_post(TEXT, INTEGER, TEXT, TEXT) AS $write_post$
     DECLARE
