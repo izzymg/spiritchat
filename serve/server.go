@@ -125,6 +125,21 @@ func (server *Server) HandleWritePost(ctx context.Context, req *request, res *re
 	}
 	userPost.Content = content
 
+	if len(userPost.Subject) > 0 && threadNumber != 0 {
+		res.Respond(http.StatusBadRequest, nil, "only threads may have subjects")
+		return
+	}
+
+	subject, errMessage := data.CheckSubject(userPost.Subject)
+	if len(errMessage) > 0 {
+		res.Respond(
+			http.StatusBadRequest,
+			nil, errMessage,
+		)
+		return
+	}
+	userPost.Subject = subject
+
 	err = server.store.WritePost(ctx, catName, threadNumber, userPost)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
