@@ -156,6 +156,16 @@ func (server *Server) HandleWritePost(ctx context.Context, req *request, res *re
 	res.Respond(http.StatusOK, ok{Message: "Post submitted"}, "")
 }
 
+type ConfigResponse struct {
+	Cooldown int `json:"cooldown"`
+}
+
+func (server *Server) HandleGetConfig(ctx context.Context, req *request, res *response) {
+	res.Respond(http.StatusOK, ConfigResponse{
+		Cooldown: server.postCooldownMs,
+	}, "")
+}
+
 // Handle handleCORSPreflight pre-flighting
 func handleCORSPreflight(allowedOrigin string) http.HandlerFunc {
 	return func(rw http.ResponseWriter, req *http.Request) {
@@ -254,6 +264,15 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 		makeHandler(
 			server.middlewareCORS(
 				server.middlewareRateLimit(server.HandleGetThreadView, 100, "get-threadview"),
+				opts.CorsOriginAllow,
+			),
+		),
+	)
+	router.GET(
+		"/v1/config",
+		makeHandler(
+			server.middlewareCORS(
+				server.HandleGetConfig,
 				opts.CorsOriginAllow,
 			),
 		),
