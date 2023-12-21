@@ -16,6 +16,10 @@ import (
 const postFailMessage = "Sorry, an error occurred while saving your post"
 const genericFailMessage = "Sorry, an error occurred while handling your request."
 
+var errBadThreadNumber = errors.New("invalid thread number")
+var errNoPost = errors.New("no post provided")
+var errBadJson = errors.New("bad JSON")
+
 // Server stub todo
 type Server struct {
 	PostCooldownSeconds int
@@ -91,58 +95,63 @@ func (server *Server) HandleGetThreadView(ctx context.Context, req *request, res
 	res.Respond(http.StatusOK, threadView, "")
 }
 
-// HandleWritePost handles a POST request to post a new post.
-func (server *Server) HandleWritePost(ctx context.Context, req *request, res *response) {
-	catName := req.params.ByName("cat")
+// Data about a post creation request
+type createPostParams struct {
+	categoryTag  string
+	threadNumber int
+}
+
+func (cpp createPostParams) isThread() bool {
+	return cpp.threadNumber == 0
+}
+
+// Gets parameters for a post creation request
+func getCreatePostParams(req *request) (*createPostParams, error) {
 	threadNumber, err := strconv.Atoi(req.params.ByName("thread"))
 	if err != nil {
-		res.Respond(
-			http.StatusBadRequest,
-			nil, "Invalid thread number",
-		)
-		return
+		return nil, errBadThreadNumber
 	}
 
-	// Decode body and write post
-	userPost := &data.UserPost{}
+	return &createPostParams{
+		categoryTag:  req.params.ByName("cat"),
+		threadNumber: threadNumber,
+	}, nil
+}
+
+// Decodes a create post request into an UNSAFE user post
+func decodeCreatePost(req *request) (*data.UnsafeUserPost, error) {
+	unsafePost := &data.UnsafeUserPost{}
 	if req.rawRequest.Body == nil {
-		res.Respond(http.StatusBadRequest, nil, "no post provided")
-		return
+		return nil, errNoPost
 	}
-	err = json.NewDecoder(req.rawRequest.Body).Decode(userPost)
+	err := json.NewDecoder(req.rawRequest.Body).Decode(unsafePost)
 	if err != nil {
-		res.Respond(http.StatusBadRequest, nil, "bad formatting")
+		return nil, errBadJson
+	}
+	return unsafePost, nil
+}
+
+// HandleCreatePost handles a POST request to post a new post.
+func (server *Server) HandleCreatePost(ctx context.Context, req *request, res *response) {
+	params, err := getCreatePostParams(req)
+	if err != nil {
+		res.Respond(http.StatusBadRequest, nil, err.Error())
 		return
 	}
 
-	content, errMessage := data.CheckContent(userPost.Content)
-	if len(errMessage) > 0 {
-		res.Respond(
-			http.StatusBadRequest,
-			nil, errMessage,
-		)
-		return
-	}
-	userPost.Content = content
-
-	if len(userPost.Subject) > 0 && threadNumber != 0 {
-		res.Respond(http.StatusBadRequest, nil, "only threads may have subjects")
+	unsafePost, err := decodeCreatePost(req)
+	if err != nil {
+		res.Respond(http.StatusBadRequest, nil, err.Error())
 		return
 	}
 
-	if threadNumber == 0 {
-		subject, errMessage := data.CheckSubject(userPost.Subject)
-		if len(errMessage) > 0 {
-			res.Respond(
-				http.StatusBadRequest,
-				nil, errMessage,
-			)
-			return
-		}
-		userPost.Subject = subject
+	safePost, err := data.SanitizeUnsafe(unsafePost, params.isThread())
+	if err != nil {
+		res.Respond(http.StatusBadRequest, nil, err.Error())
+		return
 	}
 
-	err = server.store.WritePost(ctx, catName, threadNumber, userPost)
+	err = server.store.WritePost(ctx, params.categoryTag, params.threadNumber, safePost)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			res.Respond(http.StatusNotFound, nil, err.Error())
@@ -155,7 +164,7 @@ func (server *Server) HandleWritePost(ctx context.Context, req *request, res *re
 		return
 	}
 
-	res.Respond(http.StatusOK, ok{Message: "Post submitted"}, "")
+	res.Respond(http.StatusOK, ok{Message: "post submitted"}, "")
 }
 
 type ConfigResponse struct {
@@ -256,7 +265,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 		"/v1/categories/:cat/:thread",
 		makeHandler(
 			server.middlewareCORS(
-				server.middlewareRateLimit(server.HandleWritePost, server.postCooldownMs, "post-post"),
+				server.middlewareRateLimit(server.HandleCreatePost, server.postCooldownMs, "post-post"),
 				opts.CorsOriginAllow,
 			),
 		),

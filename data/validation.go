@@ -14,15 +14,15 @@ const minContentLen = 2
 const minSubjectLen = 5
 const maxSubjectLen = 80
 
-// InvalidContentLen is a message describing an invalid post content length.
-var InvalidContentLen = fmt.Sprintf(
-	"Content must be between %d and %d characters",
+// ErrInvalidContentLen is a message describing an invalid post content length.
+var ErrInvalidContentLen = fmt.Errorf(
+	"content must be between %d and %d characters",
 	minContentLen,
 	maxContentLen,
 )
 
-var InvalidSubjectLen = fmt.Sprintf(
-	"Subject must be between %d and %d characters",
+var ErrInvalidSubjectLen = fmt.Errorf(
+	"subject must be between %d and %d characters",
 	minSubjectLen,
 	maxSubjectLen,
 )
@@ -51,25 +51,52 @@ func sanitize(data string) string {
 *
 CheckSubject sanitizes a subject and returns the content or a human-readable error message
 */
-func CheckSubject(subject string) (string, string) {
+func checkSubject(subject string, isThread bool) (string, error) {
+	// Replies should never have subjects
+	if !isThread {
+		return "", nil
+	}
+
 	subject = newline.ReplaceAllString(carriageReturns.ReplaceAllString(sanitize(subject), ""), "")
 	runeLength := len([]rune(subject))
 	if runeLength < minSubjectLen || runeLength > maxSubjectLen {
-		return "", InvalidSubjectLen
+		return "", ErrInvalidSubjectLen
 	}
-	return subject, ""
+	return subject, nil
 }
 
 /*
 CheckContent validates a post's contents, returning the content sanitized as
 the first argument, or a human-readable error message as the second.
 */
-func CheckContent(content string) (string, string) {
+func checkContent(content string) (string, error) {
 	content = sanitize(content)
 	content = carriageReturns.ReplaceAllString(content, "\n")
 	content = manyNewlines.ReplaceAllString(content, "\n")
 	if len([]rune(content)) < minContentLen || len([]rune(content)) > maxContentLen {
-		return "", InvalidContentLen
+		return "", ErrInvalidContentLen
 	}
-	return content, ""
+	return content, nil
+}
+
+type UnsafeUserPost struct {
+	Subject string
+	Content string
+}
+
+func SanitizeUnsafe(uup *UnsafeUserPost, isThread bool) (*UserPost, error) {
+	subject, err := checkSubject(uup.Subject, isThread)
+	if err != nil {
+		return nil, err
+	}
+
+	content, err := checkContent(uup.Content)
+	if err != nil {
+		return nil, err
+	}
+
+	return &UserPost{
+		Subject: subject,
+		Content: content,
+	}, nil
 }
