@@ -17,37 +17,27 @@ func getPostCooldownEnv(env string) int {
 	return int(cooldown)
 }
 
-// ShouldRunIntegrations is a testing function, returns false if integrations shouldn't be run.
-func ShouldRunIntegrations() bool {
-	if env, exists := os.LookupEnv(
-		"SPIRITTEST_INTEGRATIONS",
-	); !exists || env == "FALSE" || env == "0" {
-		return false
-	}
-	return true
-}
-
 /*
 GetIntegrationsConfig is a testing function,
 returns false if integrations shouldn't be run, or true, and integration config.
 */
 func GetIntegrationsConfig() (*SpiritConfig, bool) {
-	if !ShouldRunIntegrations() {
-		return nil, false
-	}
-	pgURL := os.Getenv("SPIRITTEST_PG_URL")
-	redisURL := os.Getenv("SPIRITTEST_REDIS_URL")
-	addr := os.Getenv("SPIRITTEST_ADDR")
-	if len(pgURL) == 0 || len(redisURL) == 0 || len(addr) == 0 {
-		panic("SPIRITTEST_PG_URL or SPIRITTEST_REDIS_URL or SPIRITTEST_ADDR empty")
-	}
+	_, runIntegrations := os.LookupEnv("SPIRIT_INTEGRATIONS")
+	return ParseEnv(), runIntegrations
+}
 
-	return &SpiritConfig{
-		HTTPAddress:         addr,
-		PGURL:               pgURL,
-		RedisURL:            redisURL,
-		PostCooldownSeconds: 0,
-	}, true
+type SpiritAuthConfig struct {
+	Domain       string
+	ClientID     string
+	ClientSecret string
+}
+
+func parseAuthEnv() SpiritAuthConfig {
+	return SpiritAuthConfig{
+		Domain:       os.Getenv("AUTH_DOMAIN"),
+		ClientID:     os.Getenv("AUTH_CLIENTID"),
+		ClientSecret: os.Getenv("AUTH_CLIENTSECRET"),
+	}
 }
 
 // SpiritConfig stores configuration for the app.
@@ -57,6 +47,7 @@ type SpiritConfig struct {
 	PGURL               string
 	RedisURL            string
 	PostCooldownSeconds int
+	AuthConfig          SpiritAuthConfig
 }
 
 // ParseEnv parses system environment variables, returning app configuration.
@@ -68,6 +59,7 @@ func ParseEnv() *SpiritConfig {
 		PGURL:               os.Getenv("SPIRITCHAT_PG_URL"),
 		RedisURL:            os.Getenv("SPIRITCHAT_REDIS_URL"),
 		PostCooldownSeconds: getPostCooldownEnv("SPIRITCHAT_COOLDOWN"),
+		AuthConfig:          parseAuthEnv(),
 	}
 	if addr, ok := os.LookupEnv("SPIRITCHAT_ADDRESS"); ok {
 		conf.HTTPAddress = addr
