@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"spiritchat/auth"
 	"spiritchat/data"
 	"strconv"
 	"time"
@@ -22,6 +23,7 @@ type Server struct {
 	PostCooldownSeconds int
 	postCooldownMs      int
 	store               data.Store
+	auth                auth.Auth
 	httpServer          http.Server
 }
 
@@ -94,7 +96,23 @@ func (server *Server) handleGetThreadView(ctx context.Context, req *request, res
 
 // HandleSignUp handles a POST request for a sign up.
 func (server *Server) handleSignUp(ctx context.Context, req *request, res *response) {
+	incSignUp, err := getIncomingSignup(req.rawRequest.Body)
+	if err != nil {
+		res.Respond(http.StatusBadRequest, nil, err.Error())
+		return
+	}
+	err = incSignUp.Sanitize()
+	if err != nil {
+		res.Respond(http.StatusBadRequest, nil, err.Error())
+		return
+	}
 
+	data, err := server.auth.RequestSignUp(ctx, incSignUp.Username, incSignUp.Email, incSignUp.Password)
+	if err != nil {
+		res.Respond(http.StatusBadRequest, nil, err.Error())
+		return
+	}
+	res.Respond(http.StatusOK, data, "success")
 }
 
 // Data about a post creation request
@@ -135,7 +153,7 @@ func (server *Server) handleCreatePost(ctx context.Context, req *request, res *r
 		return
 	}
 
-	err = incomingReply.Sanitize(incomingReply, params.isThread())
+	err = incomingReply.Sanitize(params.isThread())
 	if err != nil {
 		res.Respond(http.StatusBadRequest, nil, err.Error())
 		return
@@ -191,7 +209,7 @@ type ServerOptions struct {
 }
 
 // NewServer stub todo
-func NewServer(store data.Store, opts ServerOptions) *Server {
+func NewServer(store data.Store, auth auth.Auth, opts ServerOptions) *Server {
 
 	server := &Server{
 		store:          store,
@@ -201,6 +219,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 			IdleTimeout:       time.Minute * 10,
 			ReadHeaderTimeout: time.Second * 10,
 		},
+		auth: auth,
 	}
 
 	router := httprouter.New()
@@ -239,6 +258,15 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 		makeHandler(
 			server.middlewareCORS(
 				server.middlewareRateLimit(server.handleGetThreadView, 100, "get-threadview"),
+				opts.CorsOriginAllow,
+			),
+		),
+	)
+	router.POST(
+		"/v1/signup",
+		makeHandler(
+			server.middlewareCORS(
+				server.middlewareRateLimit(server.handleSignUp, 100, "post-signup"),
 				opts.CorsOriginAllow,
 			),
 		),

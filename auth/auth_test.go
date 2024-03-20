@@ -15,7 +15,7 @@ func createExampleAuthConfig() config.SpiritAuthConfig {
 }
 
 func TestNew(t *testing.T) {
-	_, err := New(context.TODO(), createExampleAuthConfig())
+	_, err := NewOAuth(context.TODO(), createExampleAuthConfig())
 	if err != nil {
 		t.Errorf("auth client couldn't be created: %v", err)
 	}

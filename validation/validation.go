@@ -1,6 +1,7 @@
-package serve
+package validation
 
 import (
+	"errors"
 	"fmt"
 	"html"
 	"regexp"
@@ -14,18 +15,20 @@ const minContentLen = 2
 const minSubjectLen = 5
 const maxSubjectLen = 80
 
-// ErrInvalidContentLen is a message describing an invalid post content length.
 var ErrInvalidContentLen = fmt.Errorf(
 	"content must be between %d and %d characters",
 	minContentLen,
 	maxContentLen,
 )
-
 var ErrInvalidSubjectLen = fmt.Errorf(
 	"subject must be between %d and %d characters",
 	minSubjectLen,
 	maxSubjectLen,
 )
+
+var ErrInvalidEmail = errors.New("that doesn't look like an email")
+var ErrInvalidUsername = errors.New("username required, > 3 characters")
+var ErrInvalidPassword = errors.New("password required")
 
 // Replace 3 or more manyNewlines, including possible spaces
 var manyNewlines = regexp.MustCompile("(\n\\s*){3,}")
@@ -49,9 +52,9 @@ func sanitize(data string) string {
 
 /*
 *
-CheckSubject sanitizes a subject and returns the content or a human-readable error message
+ValidateReplySubject sanitizes a subject and returns the content or a human-readable error message
 */
-func checkSubject(subject string, isThread bool) (string, error) {
+func ValidateReplySubject(subject string, isThread bool) (string, error) {
 	// Replies should never have subjects
 	if !isThread {
 		return "", nil
@@ -66,10 +69,10 @@ func checkSubject(subject string, isThread bool) (string, error) {
 }
 
 /*
-CheckContent validates a post's contents, returning the content sanitized as
+ValidateReplyContent validates a post's contents, returning the content sanitized as
 the first argument, or a human-readable error message as the second.
 */
-func checkContent(content string) (string, error) {
+func ValidateReplyContent(content string) (string, error) {
 	content = sanitize(content)
 	content = carriageReturns.ReplaceAllString(content, "\n")
 	content = manyNewlines.ReplaceAllString(content, "\n")
@@ -77,4 +80,33 @@ func checkContent(content string) (string, error) {
 		return "", ErrInvalidContentLen
 	}
 	return content, nil
+}
+
+/*
+ValidateEmail is a very basic email check. Returns human readable error if issues found.
+*/
+func ValidateEmail(email string) (string, error) {
+	if len(email) < 1 {
+		return "", ErrInvalidEmail
+	}
+	if !strings.ContainsRune(email, '@') {
+		return "", ErrInvalidEmail
+	}
+	return email, nil
+}
+
+// ValidateUsername does a length check. Returns human readable errors if issues found.
+func ValidateUsername(username string) (string, error) {
+	if len(username) < 3 {
+		return "", ErrInvalidUsername
+	}
+	return username, nil
+}
+
+// ValidatePassword does a length check. Returns human readable errors if issues found.
+func ValidatePassword(password string) (string, error) {
+	if len(password) < 1 {
+		return "", ErrInvalidPassword
+	}
+	return password, nil
 }

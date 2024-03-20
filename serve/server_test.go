@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"spiritchat/auth"
 	"spiritchat/data"
 	"testing"
 )
@@ -67,12 +68,19 @@ func (ms *MockStore) WritePost(ctx context.Context, catName string, parentThread
 	return ms.err
 }
 
-func CreateMockStore() *MockStore {
-	return &MockStore{}
+type MockAuth struct {
+	err error
 }
 
-func CreateTestServer(mockStore *MockStore) *Server {
-	return NewServer(mockStore, ServerOptions{
+func (ma *MockAuth) RequestSignUp(
+	ctx context.Context,
+	username string, email string, password string,
+) (*auth.UserData, error) {
+	return nil, ma.err
+}
+
+func CreateTestServer(mockStore *MockStore, mockAuth *MockAuth) *Server {
+	return NewServer(mockStore, mockAuth, ServerOptions{
 		Address:             "0.0.0.0",
 		PostCooldownSeconds: 0,
 		CorsOriginAllow:     "",
@@ -119,7 +127,7 @@ func TestHandleCORSPreflight(t *testing.T) {
 
 type RouteMockTest struct {
 	route        string
-	setup        func(*MockStore)
+	setup        func(*MockStore, *MockAuth)
 	expectedCode int
 	body         []byte
 }
@@ -138,14 +146,14 @@ func TestRoutes(t *testing.T) {
 			"Category view (Not Found)": {
 				route:        "/v1/categories/none",
 				expectedCode: http.StatusNotFound,
-				setup: func(ms *MockStore) {
+				setup: func(ms *MockStore, ma *MockAuth) {
 					ms.err = data.ErrNotFound
 				},
 			},
 			"Category view (Valid)": {
 				expectedCode: http.StatusOK,
 				route:        "/v1/categories/valid",
-				setup: func(ms *MockStore) {
+				setup: func(ms *MockStore, ma *MockAuth) {
 					ms.getCategoryView = &data.CatView{
 						Category: &data.Category{
 							Tag: "beep",
@@ -157,7 +165,7 @@ func TestRoutes(t *testing.T) {
 			"Thread View (not found)": {
 				expectedCode: http.StatusNotFound,
 				route:        "/v1/categories/nothing/5",
-				setup: func(ms *MockStore) {
+				setup: func(ms *MockStore, ma *MockAuth) {
 					ms.err = data.ErrNotFound
 				},
 			},
@@ -184,7 +192,7 @@ func TestRoutes(t *testing.T) {
 				expectedCode: http.StatusNotFound,
 				route:        "/v1/categories/cat/5",
 				body:         []byte(`{"Content": "hello!"}`),
-				setup: func(ms *MockStore) {
+				setup: func(ms *MockStore, ma *MockAuth) {
 					ms.err = data.ErrNotFound
 				},
 			},
@@ -200,11 +208,14 @@ func TestRoutes(t *testing.T) {
 		for testName, test := range routeTest {
 			test := test
 			t.Run(fmt.Sprintf("%s %s", method, testName), func(t *testing.T) {
-				mockStore := CreateMockStore()
+				mockAuth := &MockAuth{}
+				mockStore := &MockStore{}
+
 				if test.setup != nil {
-					test.setup(mockStore)
+					test.setup(mockStore, mockAuth)
 				}
-				server := CreateTestServer(mockStore)
+
+				server := CreateTestServer(mockStore, mockAuth)
 
 				rr := httptest.NewRecorder()
 				req, err := http.NewRequest(method, test.route, bytes.NewReader(test.body))

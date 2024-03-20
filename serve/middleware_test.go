@@ -14,8 +14,9 @@ Test that the middleware will abort the request with 429 if the store returns th
 Otherwise it should successfully call the next handler.
 */
 func TestMiddlewareRateLimit(t *testing.T) {
-	mockStore := CreateMockStore()
-	server := CreateTestServer(mockStore)
+	mockStore := &MockStore{}
+	mockAuth := &MockAuth{}
+	server := CreateTestServer(mockStore, mockAuth)
 
 	okStatus := http.StatusTeapot
 	okText := "all g"
@@ -55,8 +56,9 @@ func TestMiddlewareRateLimit(t *testing.T) {
 }
 
 func TestMiddlewareCors(t *testing.T) {
-	mockStore := CreateMockStore()
-	server := CreateTestServer(mockStore)
+	mockStore := &MockStore{}
+	mockAuth := &MockAuth{}
+	server := CreateTestServer(mockStore, mockAuth)
 
 	allowedOrigin := "example.net"
 	okHandler := func(ctx context.Context, req *request, res *response) {

@@ -16,32 +16,23 @@ var ErrInvalidEmail = errors.New("invalid email")
 var ErrInvalidPassword = errors.New("invalid password")
 
 type UserData struct {
-	Username string
-	Email    string
+	Username string `json:"username"`
+	Email    string `json:"email"`
 }
 
-func New(ctx context.Context, cfg config.SpiritAuthConfig) (*Auth, error) {
-	auth, err := authentication.New(
-		ctx,
-		cfg.Domain,
-		authentication.WithClientID(cfg.ClientID),
-		authentication.WithClientSecret(cfg.ClientSecret),
-	)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize the auth0 API client: %+v", err)
-	}
-	return &Auth{
-		auth,
-	}, nil
+type Auth interface {
+	RequestSignUp(
+		ctx context.Context,
+		username string, email string, password string,
+	) (*UserData, error)
 }
 
-type Auth struct {
+type OAuth struct {
 	auth *authentication.Authentication
 }
 
 // / Try to sign up the requested credentials
-func (a *Auth) RequestSignUp(
+func (a *OAuth) RequestSignUp(
 	ctx context.Context,
 	username string, email string, password string,
 ) (*UserData, error) {
@@ -67,5 +58,21 @@ func (a *Auth) RequestSignUp(
 	return &UserData{
 		Username: res.Username,
 		Email:    res.Email,
+	}, nil
+}
+
+func NewOAuth(ctx context.Context, cfg config.SpiritAuthConfig) (*OAuth, error) {
+	auth, err := authentication.New(
+		ctx,
+		cfg.Domain,
+		authentication.WithClientID(cfg.ClientID),
+		authentication.WithClientSecret(cfg.ClientSecret),
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize the auth0 API client: %+v", err)
+	}
+	return &OAuth{
+		auth,
 	}, nil
 }

@@ -1,4 +1,4 @@
-package serve
+package validation
 
 import (
 	"strings"
@@ -19,37 +19,37 @@ func TestCheckSubject(t *testing.T) {
 	onMax := genStr(maxSubjectLen, "a")
 	aboveMax := genStr(maxSubjectLen+1, "a")
 
-	ret, nil := checkSubject("bunch of stuff", false)
+	ret, nil := ValidateReplySubject("bunch of stuff", false)
 	if len(ret) != 0 {
 		t.Errorf("expected empty subject, got %s", ret)
 	}
 
-	_, err := checkSubject(onMin, true)
+	_, err := ValidateReplySubject(onMin, true)
 	if err != nil {
 		t.Error("expected no err string")
 	}
 
-	_, err = checkSubject(belowMin, true)
+	_, err = ValidateReplySubject(belowMin, true)
 	if err == nil {
 		t.Error("expected an err string")
 	}
 
-	_, err = checkSubject(onMax, true)
+	_, err = ValidateReplySubject(onMax, true)
 	if err != nil {
 		t.Error("expected no err string")
 	}
 
-	_, err = checkSubject(aboveMax, true)
+	_, err = ValidateReplySubject(aboveMax, true)
 	if err == nil {
 		t.Error("expected an err string")
 	}
 
-	_, err = checkSubject("   a   ", true)
+	_, err = ValidateReplySubject("   a   ", true)
 	if err == nil {
 		t.Error("expected an err string")
 	}
 
-	ret, err = checkSubject("\rxxerwz\r \r\n  \r", true)
+	ret, err = ValidateReplySubject("\rxxerwz\r \r\n  \r", true)
 	if err != nil {
 		t.Error("expected no err string")
 	}
@@ -63,7 +63,7 @@ func TestCheckSubject(t *testing.T) {
 		t.Error("expected no newlines")
 	}
 
-	ret, err = checkSubject("dog\n cat \n\n tiger \n\n\n\n\n bat", true)
+	ret, err = ValidateReplySubject("dog\n cat \n\n tiger \n\n\n\n\n bat", true)
 	if err != nil {
 		t.Error("Expected no err string")
 	}
@@ -79,32 +79,32 @@ func TestCheckContent(t *testing.T) {
 	onMax := genStr(maxContentLen, "a")
 	aboveMax := genStr(maxContentLen+1, "a")
 
-	_, err := checkContent(onMin)
+	_, err := ValidateReplyContent(onMin)
 	if err != nil {
 		t.Error("Expected no err string")
 	}
 
-	_, err = checkContent(belowMin)
+	_, err = ValidateReplyContent(belowMin)
 	if err == nil {
 		t.Error("Expected an err string")
 	}
 
-	_, err = checkContent(onMax)
+	_, err = ValidateReplyContent(onMax)
 	if err != nil {
 		t.Error("Expected no err string")
 	}
 
-	_, err = checkContent(aboveMax)
+	_, err = ValidateReplyContent(aboveMax)
 	if err == nil {
 		t.Error("Expected an err string")
 	}
 
-	_, err = checkContent("   a   ")
+	_, err = ValidateReplyContent("   a   ")
 	if err == nil {
 		t.Error("Expected an err string")
 	}
 
-	ret, err := checkContent("\rxxz\r \r\n  \r")
+	ret, err := ValidateReplyContent("\rxxz\r \r\n  \r")
 	if err != nil {
 		t.Error("Expected no err string")
 	}
@@ -115,11 +115,28 @@ func TestCheckContent(t *testing.T) {
 		t.Error("Expected no return chars")
 	}
 
-	ret, err = checkContent("dog\n cat \n\n tiger \n\n\n\n\n bat")
+	ret, err = ValidateReplyContent("dog\n cat \n\n tiger \n\n\n\n\n bat")
 	if err != nil {
 		t.Error("Expected no err string")
 	}
 	if c := strings.Count(ret, "\n"); c != 4 {
 		t.Errorf("Expected 3 newlines, got %d", c)
+	}
+}
+
+func TestValidateEmail(t *testing.T) {
+	tests := map[string]error{
+		"":             ErrInvalidEmail,
+		"no at symbol": ErrInvalidEmail,
+		"cat@dog.com":  nil,
+	}
+
+	for input, expectErr := range tests {
+		t.Run(input, func(t *testing.T) {
+			_, err := ValidateEmail(input)
+			if err != expectErr {
+				t.Errorf("expected %v, got %v", expectErr, err)
+			}
+		})
 	}
 }
