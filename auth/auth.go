@@ -14,6 +14,7 @@ import (
 var ErrInvalidUsername = errors.New("invalid username")
 var ErrInvalidEmail = errors.New("invalid email")
 var ErrInvalidPassword = errors.New("invalid password")
+var ErrUserExists = errors.New("that user already exists")
 
 type UserData struct {
 	Username string `json:"username"`
@@ -37,13 +38,14 @@ func (a *OAuth) RequestSignUp(
 	username string, email string, password string,
 ) (*UserData, error) {
 	res, err := a.auth.Database.Signup(ctx, database.SignupRequest{
-		Username: username,
-		Email:    email,
-		Password: password,
+		Username:   username,
+		Email:      email,
+		Password:   password,
+		Connection: "Username-Password-Authentication",
 	})
 	if err != nil {
 
-		if strings.Contains(err.Error(), "invalid_pasword") {
+		if strings.Contains(err.Error(), "invalid_password") {
 			return nil, ErrInvalidPassword
 		}
 		if strings.Contains(err.Error(), "invalid_username") {
@@ -51,6 +53,9 @@ func (a *OAuth) RequestSignUp(
 		}
 		if strings.Contains(err.Error(), "invalid_email") {
 			return nil, ErrInvalidEmail
+		}
+		if strings.Contains(err.Error(), "invalid_signup") {
+			return nil, ErrUserExists
 		}
 
 		return nil, err
