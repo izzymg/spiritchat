@@ -113,7 +113,7 @@ func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *te
 		for tag, replyCount := range tests {
 			// create OPs
 			for i := 0; i < opCount; i++ {
-				err := store.WritePost(ctx, tag, 0, testPost)
+				err := store.WritePost(ctx, tag, 0, testPost.Subject, testPost.Content)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -122,7 +122,7 @@ func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *te
 			opNum := opCount - 1
 			// create replies to an op
 			for i := 0; i < replyCount; i++ {
-				err := store.WritePost(ctx, tag, opNum, testPost)
+				err := store.WritePost(ctx, tag, opNum, testPost.Subject, testPost.Content)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -154,7 +154,7 @@ func integration_GetPostByNumber(ctx context.Context, store *DataStore) func(t *
 
 		testPost := createTestUserPost()
 		for tag := range testCategories {
-			err = store.WritePost(ctx, tag, 0, testPost)
+			err = store.WritePost(ctx, tag, 0, testPost.Subject, testPost.Content)
 			if err != nil {
 				t.Error(err)
 			}
@@ -235,14 +235,14 @@ func integration_GetCategoryView(ctx context.Context, store *DataStore) func(t *
 
 		// write a thread into the category
 		for i := 0; i < threadCount; i++ {
-			err = store.WritePost(ctx, catName, 0, createTestUserPost())
+			err = store.WritePost(ctx, catName, 0, "beep", "boop")
 			if err != nil {
 				t.Error(err)
 			}
 		}
 
 		// write a reply to that post
-		err = store.WritePost(ctx, catName, 1, createTestUserPost())
+		err = store.WritePost(ctx, catName, 1, "beep", "boop")
 		if err != nil {
 			t.Error(err)
 		}
@@ -290,7 +290,7 @@ Test writing valid & invalid posts
 func integration_WritePosts(ctx context.Context, datastore *DataStore) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Run("invalid category", func(t *testing.T) {
-			err := datastore.WritePost(ctx, "invalid-category", 0, createTestUserPost())
+			err := datastore.WritePost(ctx, "invalid-category", 0, "beep", "boop")
 			if err == nil {
 				t.Errorf("expected writepost error, got: %v", err)
 			}
@@ -308,7 +308,7 @@ func integration_WritePosts(ctx context.Context, datastore *DataStore) func(t *t
 			}
 			defer removeTestCategories(ctx, datastore, testCategories)
 
-			err = datastore.WritePost(ctx, name, 0, createTestUserPost())
+			err = datastore.WritePost(ctx, name, 0, "beep", "boop")
 			if err != nil {
 				t.Errorf("expected no error, got: %v", err)
 			}
@@ -320,7 +320,7 @@ func integration_WritePosts(ctx context.Context, datastore *DataStore) func(t *t
 			createTestCategories(ctx, datastore, testCategories)
 			defer removeTestCategories(ctx, datastore, testCategories)
 
-			err := datastore.WritePost(ctx, name, 5, createTestUserPost())
+			err := datastore.WritePost(ctx, name, 5, "beep", "boop")
 			if err == nil || !errors.Is(err, ErrNotFound) {
 				t.Errorf("expected ErrNotFound, got: %v", err)
 			}
@@ -362,7 +362,6 @@ Creates all categories, and then writes n threads to each category concurrently.
 func concurrentThreadWriteTest(ctx context.Context, datastore *DataStore, tests map[string]int) func(t *testing.T) {
 	return func(t *testing.T) {
 		for categoryName, threadCount := range tests {
-			testUserPost := createTestUserPost()
 			threadCount := threadCount
 			categoryName := categoryName
 			t.Run(categoryName, func(t *testing.T) {
@@ -374,7 +373,7 @@ func concurrentThreadWriteTest(ctx context.Context, datastore *DataStore, tests 
 					wg.Add(1)
 					go func() {
 						defer wg.Done()
-						err := datastore.WritePost(ctx, categoryName, 0, testUserPost)
+						err := datastore.WritePost(ctx, categoryName, 0, "beep", "boop")
 						if err != nil {
 							panic(err)
 						}

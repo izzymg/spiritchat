@@ -1,4 +1,4 @@
-package data
+package serve
 
 import (
 	"fmt"
@@ -77,26 +77,4 @@ func checkContent(content string) (string, error) {
 		return "", ErrInvalidContentLen
 	}
 	return content, nil
-}
-
-type UnsafeUserPost struct {
-	Subject string
-	Content string
-}
-
-func SanitizeUnsafe(uup *UnsafeUserPost, isThread bool) (*UserPost, error) {
-	subject, err := checkSubject(uup.Subject, isThread)
-	if err != nil {
-		return nil, err
-	}
-
-	content, err := checkContent(uup.Content)
-	if err != nil {
-		return nil, err
-	}
-
-	return &UserPost{
-		Subject: subject,
-		Content: content,
-	}, nil
 }

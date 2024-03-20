@@ -2,7 +2,6 @@ package serve
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -17,8 +16,6 @@ const postFailMessage = "Sorry, an error occurred while saving your post"
 const genericFailMessage = "Sorry, an error occurred while handling your request."
 
 var errBadThreadNumber = errors.New("invalid thread number")
-var errNoPost = errors.New("no post provided")
-var errBadJson = errors.New("bad JSON")
 
 // Server stub todo
 type Server struct {
@@ -39,8 +36,8 @@ func (server *Server) Listen(ctx context.Context) error {
 	return server.httpServer.Shutdown(context.Background())
 }
 
-// HandleGetCategories handles a GET request for information on categories.
-func (server *Server) HandleGetCategories(ctx context.Context, req *request, res *response) {
+// handleGetCategories handles a GET request for information on categories.
+func (server *Server) handleGetCategories(ctx context.Context, req *request, res *response) {
 	categories, err := server.store.GetCategories(ctx)
 	if err != nil {
 		res.Respond(
@@ -53,8 +50,8 @@ func (server *Server) HandleGetCategories(ctx context.Context, req *request, res
 	res.Respond(http.StatusOK, categories, "")
 }
 
-// HandleGetCategoryView handles a GET request for information on a single category.
-func (server *Server) HandleGetCategoryView(ctx context.Context, req *request, res *response) {
+// handleGetCategoryView handles a GET request for information on a single category.
+func (server *Server) handleGetCategoryView(ctx context.Context, req *request, res *response) {
 	view, err := server.store.GetCategoryView(ctx, req.params.ByName("cat"))
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
@@ -74,8 +71,8 @@ func (server *Server) HandleGetCategoryView(ctx context.Context, req *request, r
 	res.Respond(http.StatusOK, view, "")
 }
 
-// HandleGetThreadView handles a GET request for information on a thread.
-func (server *Server) HandleGetThreadView(ctx context.Context, req *request, res *response) {
+// handleGetThreadView handles a GET request for information on a thread.
+func (server *Server) handleGetThreadView(ctx context.Context, req *request, res *response) {
 	threadNum, err := strconv.Atoi(req.params.ByName("thread"))
 	if err != nil {
 		res.Respond(http.StatusBadRequest, nil, "Invalid thread number")
@@ -95,6 +92,11 @@ func (server *Server) HandleGetThreadView(ctx context.Context, req *request, res
 	res.Respond(http.StatusOK, threadView, "")
 }
 
+// HandleSignUp handles a POST request for a sign up.
+func (server *Server) handleSignUp(ctx context.Context, req *request, res *response) {
+
+}
+
 // Data about a post creation request
 type createPostParams struct {
 	categoryTag  string
@@ -106,7 +108,7 @@ func (cpp createPostParams) isThread() bool {
 }
 
 // Gets parameters for a post creation request
-func getCreatePostParams(req *request) (*createPostParams, error) {
+func getIncomingReplyParams(req *request) (*createPostParams, error) {
 	threadNumber, err := strconv.Atoi(req.params.ByName("thread"))
 	if err != nil {
 		return nil, errBadThreadNumber
@@ -118,40 +120,34 @@ func getCreatePostParams(req *request) (*createPostParams, error) {
 	}, nil
 }
 
-// Decodes a create post request into an UNSAFE user post
-func decodeCreatePost(req *request) (*data.UnsafeUserPost, error) {
-	unsafePost := &data.UnsafeUserPost{}
-	if req.rawRequest.Body == nil {
-		return nil, errNoPost
-	}
-	err := json.NewDecoder(req.rawRequest.Body).Decode(unsafePost)
-	if err != nil {
-		return nil, errBadJson
-	}
-	return unsafePost, nil
-}
+// handleCreatePost handles a POST request to post a new post.
+func (server *Server) handleCreatePost(ctx context.Context, req *request, res *response) {
 
-// HandleCreatePost handles a POST request to post a new post.
-func (server *Server) HandleCreatePost(ctx context.Context, req *request, res *response) {
-	params, err := getCreatePostParams(req)
+	params, err := getIncomingReplyParams(req)
 	if err != nil {
 		res.Respond(http.StatusBadRequest, nil, err.Error())
 		return
 	}
 
-	unsafePost, err := decodeCreatePost(req)
+	incomingReply, err := getIncomingReply(req.rawRequest.Body)
 	if err != nil {
 		res.Respond(http.StatusBadRequest, nil, err.Error())
 		return
 	}
 
-	safePost, err := data.SanitizeUnsafe(unsafePost, params.isThread())
+	err = incomingReply.Sanitize(incomingReply, params.isThread())
 	if err != nil {
 		res.Respond(http.StatusBadRequest, nil, err.Error())
 		return
 	}
 
-	err = server.store.WritePost(ctx, params.categoryTag, params.threadNumber, safePost)
+	err = server.store.WritePost(
+		ctx,
+		params.categoryTag,
+		params.threadNumber,
+		incomingReply.Subject,
+		incomingReply.Content,
+	)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			res.Respond(http.StatusNotFound, nil, err.Error())
@@ -171,7 +167,7 @@ type ConfigResponse struct {
 	Cooldown int `json:"cooldown"`
 }
 
-func (server *Server) HandleGetConfig(ctx context.Context, req *request, res *response) {
+func (server *Server) handleGetConfig(ctx context.Context, req *request, res *response) {
 	res.Respond(http.StatusOK, ConfigResponse{
 		Cooldown: server.postCooldownMs,
 	}, "")
@@ -184,38 +180,6 @@ func handleCORSPreflight(allowedOrigin string) http.HandlerFunc {
 		rw.Header().Set("Access-Control-Allow-Methods", "GET,POST")
 		rw.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		rw.WriteHeader(http.StatusNoContent)
-	}
-}
-
-func (s *Server) middlewareCORS(hand handlerFunc, allowedOrigin string) handlerFunc {
-	return func(ctx context.Context, req *request, res *response) {
-		res.rw.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
-		hand(ctx, req, res)
-	}
-}
-
-func (s *Server) middlewareRateLimit(hand handlerFunc, ms int, resource string) handlerFunc {
-	return func(ctx context.Context, req *request, res *response) {
-		isLimited, err := s.store.IsRateLimited(req.ip, resource)
-		if err != nil {
-			res.Respond(http.StatusInternalServerError, nil, "internal server error")
-			log.Printf("Failed to fetch rate limit info: %s", err)
-			return
-		}
-
-		if isLimited {
-			res.Respond(http.StatusTooManyRequests, nil, "Rate limited")
-			return
-		}
-
-		err = s.store.RateLimit(req.ip, resource, ms)
-		if err != nil {
-			res.Respond(http.StatusInternalServerError, nil, "internal server error")
-			log.Printf("Failed to rate limit: %s", err)
-			return
-		}
-
-		hand(ctx, req, res)
 	}
 }
 
@@ -248,7 +212,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 		"/v1/categories",
 		makeHandler(
 			server.middlewareCORS(
-				server.middlewareRateLimit(server.HandleGetCategories, 100, "get-cats"),
+				server.middlewareRateLimit(server.handleGetCategories, 100, "get-cats"),
 				opts.CorsOriginAllow,
 			),
 		),
@@ -257,7 +221,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 		"/v1/categories/:cat",
 		makeHandler(
 			server.middlewareCORS(
-				server.middlewareRateLimit(server.HandleGetCategoryView, 100, "get-catview"), opts.CorsOriginAllow,
+				server.middlewareRateLimit(server.handleGetCategoryView, 100, "get-catview"), opts.CorsOriginAllow,
 			),
 		),
 	)
@@ -265,7 +229,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 		"/v1/categories/:cat/:thread",
 		makeHandler(
 			server.middlewareCORS(
-				server.middlewareRateLimit(server.HandleCreatePost, server.postCooldownMs, "post-post"),
+				server.middlewareRateLimit(server.handleCreatePost, server.postCooldownMs, "post-post"),
 				opts.CorsOriginAllow,
 			),
 		),
@@ -274,7 +238,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 		"/v1/categories/:cat/:thread",
 		makeHandler(
 			server.middlewareCORS(
-				server.middlewareRateLimit(server.HandleGetThreadView, 100, "get-threadview"),
+				server.middlewareRateLimit(server.handleGetThreadView, 100, "get-threadview"),
 				opts.CorsOriginAllow,
 			),
 		),
@@ -283,7 +247,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 		"/v1/config",
 		makeHandler(
 			server.middlewareCORS(
-				server.HandleGetConfig,
+				server.handleGetConfig,
 				opts.CorsOriginAllow,
 			),
 		),

@@ -69,7 +69,7 @@ type Store interface {
 		Optional parent thread can be provided if it's a reply.
 		Should return ErrNotFound if invalid post or category.
 	*/
-	WritePost(ctx context.Context, categoryTag string, parentThreadNumber int, p *UserPost) error
+	WritePost(ctx context.Context, categoryTag string, parentThreadNumber int, subject string, content string) error
 }
 
 var ErrNotFound = errors.New("not found")
@@ -363,14 +363,14 @@ func (store *DataStore) GetCategoryView(ctx context.Context, categoryTag string)
 	}, nil
 }
 
-func (store *DataStore) WritePost(ctx context.Context, categoryTag string, parentThreadNumber int, p *UserPost) error {
+func (store *DataStore) WritePost(ctx context.Context, categoryTag string, parentThreadNumber int, subject string, content string) error {
 	_, err := store.pgPool.Exec(
 		ctx,
 		"CALL write_post($1, $2::int, $3, $4)",
 		categoryTag,
 		parentThreadNumber,
-		p.Content,
-		p.Subject,
+		content,
+		subject,
 	)
 
 	// Catch foreign-key violations and return a human-readable message.
