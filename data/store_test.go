@@ -98,7 +98,7 @@ func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *te
 
 		err = createTestCategories(ctx, store, testCategories)
 		if err != nil {
-			t.Errorf(err)
+			t.Error(err)
 		}
 		defer removeTestCategories(ctx, store, testCategories)
 
