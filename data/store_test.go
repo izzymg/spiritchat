@@ -98,7 +98,7 @@ func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *te
 
 		err = createTestCategories(ctx, store, testCategories)
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf(err)
 		}
 		defer removeTestCategories(ctx, store, testCategories)
 
@@ -115,7 +115,7 @@ func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *te
 			for i := 0; i < opCount; i++ {
 				err := store.WritePost(ctx, tag, 0, testPost.Subject, testPost.Content)
 				if err != nil {
-					t.Fatal(err)
+					t.Error(err)
 				}
 			}
 
@@ -124,13 +124,13 @@ func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *te
 			for i := 0; i < replyCount; i++ {
 				err := store.WritePost(ctx, tag, opNum, testPost.Subject, testPost.Content)
 				if err != nil {
-					t.Fatal(err)
+					t.Error(err)
 				}
 			}
 
 			view, err := store.GetThreadView(ctx, tag, opNum)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 			if len(view.Posts) != replyCount+1 {
 				t.Errorf("expected %d posts, got: %d", replyCount+1, len(view.Posts))
@@ -383,7 +383,7 @@ func concurrentThreadWriteTest(ctx context.Context, datastore *DataStore, tests 
 
 				count, err := datastore.GetThreadCount(ctx, categoryName)
 				if err != nil {
-					t.Fatalf("failed to get thread count on category %s: %v", categoryName, err)
+					t.Errorf("failed to get thread count on category %s: %v", categoryName, err)
 				}
 				if count != threadCount {
 					t.Errorf("expected %d threads, got %d", threadCount, count)
