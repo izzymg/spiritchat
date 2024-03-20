@@ -22,7 +22,12 @@ GetIntegrationsConfig is a testing function,
 returns false if integrations shouldn't be run, or true, and integration config.
 */
 func GetIntegrationsConfig() (*SpiritConfig, bool) {
-	_, runIntegrations := os.LookupEnv("SPIRIT_INTEGRATIONS")
+	val, present := os.LookupEnv("SPIRIT_INTEGRATIONS")
+	runIntegrations := false
+	if present && len(val) > 0 && val != "0" && val != "FALSE" {
+		runIntegrations = true
+	}
+
 	return ParseEnv(), runIntegrations
 }
 
