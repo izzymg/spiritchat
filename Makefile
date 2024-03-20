@@ -2,6 +2,7 @@
 .PHONY: test test-integrate migrate-up migrate-down
 test:
 	@echo "--- Spirit Test: No Integrations ---"
+	go run . migrate up
 	SPIRIT_INTEGRATIONS="" go test -cover -timeout 15s ./...
 migrate-up:
 	@echo "--- Migrating Spirit Up ---"
@@ -9,7 +10,8 @@ migrate-up:
 migrate-down:
 	@echo "--- Migrating Spirit Down ---"
 	go run . migrate down
-test-integrate:
+test-integrations:
 	@echo "--- Spirit Test: With Integrations ---"
+	go run . migrate up
 	SPIRIT_INTEGRATIONS="YES" go test -cover -timeout 15s ./...
 
