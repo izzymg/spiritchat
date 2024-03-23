@@ -26,6 +26,7 @@ type Auth interface {
 		ctx context.Context,
 		username string, email string, password string,
 	) (*UserData, error)
+	GetUserFromToken(ctx context.Context, token string) (*UserData, error)
 }
 
 type OAuth struct {
@@ -63,6 +64,17 @@ func (a *OAuth) RequestSignUp(
 	return &UserData{
 		Username: res.Username,
 		Email:    res.Email,
+	}, nil
+}
+
+func (a *OAuth) GetUserFromToken(ctx context.Context, token string) (*UserData, error) {
+	info, err := a.auth.UserInfo(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	return &UserData{
+		Username: info.PreferredUsername,
+		Email:    info.Email,
 	}, nil
 }
 

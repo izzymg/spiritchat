@@ -2,18 +2,19 @@ package serve
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 )
 
-func (s *Server) middlewareCORS(hand handlerFunc, allowedOrigin string) handlerFunc {
+func (s *Server) middlewareCORS(next handlerFunc, allowedOrigin string) handlerFunc {
 	return func(ctx context.Context, req *request, res *response) {
 		res.rw.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
-		hand(ctx, req, res)
+		next(ctx, req, res)
 	}
 }
 
-func (s *Server) middlewareRateLimit(hand handlerFunc, ms int, resource string) handlerFunc {
+func (s *Server) middlewareRateLimit(next handlerFunc, ms int, resource string) handlerFunc {
 	return func(ctx context.Context, req *request, res *response) {
 		isLimited, err := s.store.IsRateLimited(req.ip, resource)
 		if err != nil {
@@ -34,6 +35,30 @@ func (s *Server) middlewareRateLimit(hand handlerFunc, ms int, resource string) 
 			return
 		}
 
-		hand(ctx, req, res)
+		next(ctx, req, res)
+	}
+}
+
+func (s *Server) middlewareRequireLogin(next handlerFunc) handlerFunc {
+	return func(ctx context.Context, req *request, res *response) {
+		token := req.header.Get("Authorization")
+		if len(token) < 1 {
+			res.Respond(http.StatusForbidden, nil, "no access token")
+			return
+		}
+		user, err := s.auth.GetUserFromToken(ctx, token)
+		if err != nil {
+			res.Respond(http.StatusForbidden, nil, fmt.Sprintf("look up user failure: %s", err))
+			return
+		}
+		if user == nil {
+			res.Respond(http.StatusNotFound, nil, "no user")
+			return
+		}
+		req.user = &requestUser{
+			Username: user.Username,
+			Email:    user.Email,
+		}
+		next(ctx, req, res)
 	}
 }

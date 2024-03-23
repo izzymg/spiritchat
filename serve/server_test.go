@@ -69,14 +69,22 @@ func (ms *MockStore) WritePost(ctx context.Context, catName string, parentThread
 }
 
 type MockAuth struct {
-	err error
+	err  error
+	user *auth.UserData
 }
 
 func (ma *MockAuth) RequestSignUp(
 	ctx context.Context,
 	username string, email string, password string,
 ) (*auth.UserData, error) {
-	return nil, ma.err
+	return ma.user, ma.err
+}
+
+func (ma *MockAuth) GetUserFromToken(
+	ctx context.Context,
+	token string,
+) (*auth.UserData, error) {
+	return ma.user, ma.err
 }
 
 func CreateTestServer(mockStore *MockStore, mockAuth *MockAuth) *Server {
@@ -127,7 +135,7 @@ func TestHandleCORSPreflight(t *testing.T) {
 
 type RouteMockTest struct {
 	route        string
-	setup        func(*MockStore, *MockAuth)
+	setup        func(*MockStore, *MockAuth, *http.Request)
 	expectedCode int
 	body         []byte
 }
@@ -146,14 +154,14 @@ func TestRoutes(t *testing.T) {
 			"Category view (Not Found)": {
 				route:        "/v1/categories/none",
 				expectedCode: http.StatusNotFound,
-				setup: func(ms *MockStore, ma *MockAuth) {
+				setup: func(ms *MockStore, ma *MockAuth, r *http.Request) {
 					ms.err = data.ErrNotFound
 				},
 			},
 			"Category view (Valid)": {
 				expectedCode: http.StatusOK,
 				route:        "/v1/categories/valid",
-				setup: func(ms *MockStore, ma *MockAuth) {
+				setup: func(ms *MockStore, ma *MockAuth, r *http.Request) {
 					ms.getCategoryView = &data.CatView{
 						Category: &data.Category{
 							Tag: "beep",
@@ -165,7 +173,7 @@ func TestRoutes(t *testing.T) {
 			"Thread View (not found)": {
 				expectedCode: http.StatusNotFound,
 				route:        "/v1/categories/nothing/5",
-				setup: func(ms *MockStore, ma *MockAuth) {
+				setup: func(ms *MockStore, ma *MockAuth, r *http.Request) {
 					ms.err = data.ErrNotFound
 				},
 			},
@@ -192,7 +200,7 @@ func TestRoutes(t *testing.T) {
 				expectedCode: http.StatusNotFound,
 				route:        "/v1/categories/cat/5",
 				body:         []byte(`{"Content": "hello!"}`),
-				setup: func(ms *MockStore, ma *MockAuth) {
+				setup: func(ms *MockStore, ma *MockAuth, r *http.Request) {
 					ms.err = data.ErrNotFound
 				},
 			},
@@ -200,6 +208,21 @@ func TestRoutes(t *testing.T) {
 				expectedCode: http.StatusOK,
 				body:         []byte(`{"Content": "hello!"}`),
 				route:        "/v1/categories/cat/1",
+			},
+			"Sign Up (no username)": {
+				expectedCode: http.StatusBadRequest,
+				route:        "/v1/signup",
+				body:         []byte(`{"username": "", password: "beep", email:"nah@gmail.com"}`),
+			},
+			"Sign Up (no password)": {
+				expectedCode: http.StatusBadRequest,
+				route:        "/v1/signup",
+				body:         []byte(`{"username": "awdawdwad", password: "", email:"nah@gmail.com"}`),
+			},
+			"Sign Up (bad email)": {
+				expectedCode: http.StatusBadRequest,
+				route:        "/v1/signup",
+				body:         []byte(`{"username": "sdflkmmlksdf", password: "beep", email:"naha.com"}`),
 			},
 		},
 	}
@@ -210,18 +233,19 @@ func TestRoutes(t *testing.T) {
 			t.Run(fmt.Sprintf("%s %s", method, testName), func(t *testing.T) {
 				mockAuth := &MockAuth{}
 				mockStore := &MockStore{}
+				req, err := http.NewRequest(method, test.route, bytes.NewReader(test.body))
+				if err != nil {
+					t.Fatal(err)
+				}
 
 				if test.setup != nil {
-					test.setup(mockStore, mockAuth)
+					test.setup(mockStore, mockAuth, req)
 				}
 
 				server := CreateTestServer(mockStore, mockAuth)
 
 				rr := httptest.NewRecorder()
-				req, err := http.NewRequest(method, test.route, bytes.NewReader(test.body))
-				if err != nil {
-					t.Fatal(err)
-				}
+
 				server.ServeHTTP(rr, req)
 				if rr.Code != test.expectedCode {
 					t.Errorf("%s: %s, expected status %d, got: %d", method, test.route, test.expectedCode, rr.Code)
