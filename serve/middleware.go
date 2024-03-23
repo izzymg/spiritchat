@@ -10,6 +10,7 @@ import (
 func (s *Server) middlewareCORS(next handlerFunc, allowedOrigin string) handlerFunc {
 	return func(ctx context.Context, req *request, res *response) {
 		res.rw.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+		res.rw.Header().Set("Access-Control-Allow-Headers", "Authorization")
 		next(ctx, req, res)
 	}
 }

@@ -199,7 +199,7 @@ func handleCORSPreflight(allowedOrigin string) http.HandlerFunc {
 	return func(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		rw.Header().Set("Access-Control-Allow-Methods", "GET,POST")
-		rw.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		rw.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
 		rw.WriteHeader(http.StatusNoContent)
 	}
 }
