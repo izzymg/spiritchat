@@ -64,7 +64,7 @@ func (ms *MockStore) GetCategoryView(ctx context.Context, catName string) (*data
 	return ms.getCategoryView, ms.err
 }
 
-func (ms *MockStore) WritePost(ctx context.Context, catName string, parentThreadNumber int, subject string, content string) error {
+func (ms *MockStore) WritePost(ctx context.Context, catName string, parentThreadNumber int, subject string, content string, username string, email string, ip string) error {
 	return ms.err
 }
 
@@ -190,17 +190,39 @@ func TestRoutes(t *testing.T) {
 			"Write Thread (bad formatting)": {
 				expectedCode: http.StatusBadRequest,
 				route:        "/v1/categories/cat/beepboop",
+				setup: func(ms *MockStore, ma *MockAuth, r *http.Request) {
+					r.Header.Add("Authorization", "ok")
+					ma.err = nil
+					ma.user = &auth.UserData{
+						Username: "test user",
+						Email:    "test@gmail.com",
+					}
+				},
 			},
 			"Write Thread (bad empty thread)": {
 				expectedCode: http.StatusBadRequest,
 				route:        "/v1/categories/cat/1",
 				body:         []byte(`{"Content": ""}`),
+				setup: func(ms *MockStore, ma *MockAuth, r *http.Request) {
+					r.Header.Add("Authorization", "ok")
+					ma.err = nil
+					ma.user = &auth.UserData{
+						Username: "test user",
+						Email:    "test@gmail.com",
+					}
+				},
 			},
 			"Write Thread (not found)": {
 				expectedCode: http.StatusNotFound,
 				route:        "/v1/categories/cat/5",
 				body:         []byte(`{"Content": "hello!"}`),
 				setup: func(ms *MockStore, ma *MockAuth, r *http.Request) {
+					r.Header.Add("Authorization", "ok")
+					ma.err = nil
+					ma.user = &auth.UserData{
+						Username: "test user",
+						Email:    "test@gmail.com",
+					}
 					ms.err = data.ErrNotFound
 				},
 			},
@@ -208,6 +230,14 @@ func TestRoutes(t *testing.T) {
 				expectedCode: http.StatusOK,
 				body:         []byte(`{"Content": "hello!"}`),
 				route:        "/v1/categories/cat/1",
+				setup: func(ms *MockStore, ma *MockAuth, r *http.Request) {
+					r.Header.Add("Authorization", "ok")
+					ma.err = nil
+					ma.user = &auth.UserData{
+						Username: "test user",
+						Email:    "test@gmail.com",
+					}
+				},
 			},
 			"Sign Up (no username)": {
 				expectedCode: http.StatusBadRequest,

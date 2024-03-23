@@ -69,7 +69,7 @@ type Store interface {
 		Optional parent thread can be provided if it's a reply.
 		Should return ErrNotFound if invalid post or category.
 	*/
-	WritePost(ctx context.Context, categoryTag string, parentThreadNumber int, subject string, content string) error
+	WritePost(ctx context.Context, categoryTag string, parentThreadNumber int, subject string, content string, username string, email string, ip string) error
 }
 
 var ErrNotFound = errors.New("not found")
@@ -94,6 +94,7 @@ type Post struct {
 	Parent    int       `json:"-"`
 	Subject   string    `json:"subject"`
 	Content   string    `json:"content"`
+	Username  string    `json:"username"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
@@ -258,13 +259,13 @@ func (store *DataStore) GetCategories(ctx context.Context) ([]*Category, error) 
 func (store *DataStore) GetPostByNumber(ctx context.Context, categoryTag string, num int) (*Post, error) {
 	row := store.pgPool.QueryRow(
 		ctx,
-		"SELECT num, cat, content, subject, parent, created_at FROM posts WHERE cat = $1 AND num = $2",
+		"SELECT num, cat, content, subject, parent, username, created_at FROM posts WHERE cat = $1 AND num = $2",
 		categoryTag,
 		num,
 	)
 
 	var p Post
-	err := row.Scan(&p.Num, &p.Cat, &p.Content, &p.Subject, &p.Parent, &p.CreatedAt)
+	err := row.Scan(&p.Num, &p.Cat, &p.Content, &p.Subject, &p.Parent, &p.Username, &p.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -283,7 +284,7 @@ func (store *DataStore) GetThreadView(ctx context.Context, categoryTag string, t
 
 	replyRows, err := store.pgPool.Query(
 		ctx,
-		"select num, cat, content, subject, parent, created_at FROM posts WHERE cat = $1 AND (num = $2 or parent = $2) ORDER BY NUM ASC;",
+		"select num, cat, content, subject, parent, username, created_at FROM posts WHERE cat = $1 AND (num = $2 or parent = $2) ORDER BY NUM ASC;",
 		category.Tag,
 		threadNum,
 	)
@@ -295,7 +296,7 @@ func (store *DataStore) GetThreadView(ctx context.Context, categoryTag string, t
 	var posts []*Post = make([]*Post, 0)
 	for replyRows.Next() {
 		post := &Post{}
-		err := replyRows.Scan(&post.Num, &post.Cat, &post.Content, &post.Subject, &post.Parent, &post.CreatedAt)
+		err := replyRows.Scan(&post.Num, &post.Cat, &post.Content, &post.Subject, &post.Parent, &post.Username, &post.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse thread reply: %w", err)
 		}
@@ -340,7 +341,7 @@ func (store *DataStore) GetCategoryView(ctx context.Context, categoryTag string)
 
 	rows, err := store.pgPool.Query(
 		ctx,
-		"SELECT num, cat, content, subject, created_at FROM posts WHERE cat = $1 AND parent = 0 ORDER BY num ASC",
+		"SELECT num, cat, content, subject, username, created_at FROM posts WHERE cat = $1 AND parent = 0 ORDER BY num ASC",
 		categoryTag,
 	)
 	if err != nil {
@@ -351,7 +352,7 @@ func (store *DataStore) GetCategoryView(ctx context.Context, categoryTag string)
 	var posts []*Post = make([]*Post, 0)
 	for rows.Next() {
 		post := &Post{}
-		err := rows.Scan(&post.Num, &post.Cat, &post.Content, &post.Subject, &post.CreatedAt)
+		err := rows.Scan(&post.Num, &post.Cat, &post.Content, &post.Subject, &post.Username, &post.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse a queried category view: %w", err)
 		}
@@ -363,14 +364,26 @@ func (store *DataStore) GetCategoryView(ctx context.Context, categoryTag string)
 	}, nil
 }
 
-func (store *DataStore) WritePost(ctx context.Context, categoryTag string, parentThreadNumber int, subject string, content string) error {
+func (store *DataStore) WritePost(
+	ctx context.Context,
+	categoryTag string,
+	parentThreadNumber int,
+	subject string,
+	content string,
+	username string,
+	email string,
+	ip string,
+) error {
 	_, err := store.pgPool.Exec(
 		ctx,
-		"CALL write_post($1, $2::int, $3, $4)",
+		"CALL write_post($1, $2::int, $3, $4, $5, $6, $7)",
 		categoryTag,
 		parentThreadNumber,
 		content,
 		subject,
+		username,
+		email,
+		ip,
 	)
 
 	// Catch foreign-key violations and return a human-readable message.

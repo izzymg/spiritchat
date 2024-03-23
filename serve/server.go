@@ -165,6 +165,9 @@ func (server *Server) handleCreatePost(ctx context.Context, req *request, res *r
 		params.threadNumber,
 		incomingReply.Subject,
 		incomingReply.Content,
+		req.user.Username,
+		req.user.Email,
+		req.ip,
 	)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
@@ -248,7 +251,10 @@ func NewServer(store data.Store, auth auth.Auth, opts ServerOptions) *Server {
 		"/v1/categories/:cat/:thread",
 		makeHandler(
 			server.middlewareCORS(
-				server.middlewareRateLimit(server.handleCreatePost, server.postCooldownMs, "post-post"),
+				server.middlewareRequireLogin(
+					server.middlewareRateLimit(
+						server.handleCreatePost, server.postCooldownMs, "post-post"),
+				),
 				opts.CorsOriginAllow,
 			),
 		),

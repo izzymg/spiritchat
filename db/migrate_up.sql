@@ -13,9 +13,9 @@ $check_reply$ LANGUAGE plpgsql;
 
 -- Create a new post, generating a category-specific number for it 
 -- based on the most recent category number.
--- args: category, parent, content, subject
+-- args: category, parent, content, subject, username, email, ip
 -- Don't touch the ordering of this or it deadlocks under concurrent load.
-CREATE OR REPLACE PROCEDURE write_post(TEXT, INTEGER, TEXT, TEXT) AS $write_post$
+CREATE OR REPLACE PROCEDURE write_post(TEXT, INTEGER, TEXT, TEXT, TEXT, TEXT, TEXT) AS $write_post$
     DECLARE
         post_num INTEGER;
     BEGIN
@@ -23,8 +23,8 @@ CREATE OR REPLACE PROCEDURE write_post(TEXT, INTEGER, TEXT, TEXT) AS $write_post
         IF post_num IS NULL THEN
             RAISE EXCEPTION 'Nonexistent category --> %', $1 USING ERRCODE = 23503;
         END IF;
-        INSERT INTO posts (cat, parent, content, num, subject) VALUES (
-            $1, $2, $3, post_num, $4
+        INSERT INTO posts (cat, parent, content, num, subject, username, email, ip) VALUES (
+            $1, $2, $3, post_num, $4, $5, $6, $7
         );
         UPDATE cats SET post_count = post_num + 1 WHERE tag = $1;
     END
@@ -47,6 +47,9 @@ CREATE TABLE IF NOT EXISTS posts (
     subject                 text NOT NULL,
     parent                  integer NOT NULL,
     content                 text NOT NULL,
+    username                text NOT NULL,
+    email                   text NOT NULL,
+    ip                      text NOT NULL,
     created_at              timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
     --- Post must belong to a valid category and have a unique number for the category
     CONSTRAINT post_cat_num PRIMARY KEY(num, cat),
