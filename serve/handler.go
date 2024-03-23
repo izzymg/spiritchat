@@ -7,21 +7,17 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"spiritchat/auth"
 
 	"github.com/julienschmidt/httprouter"
 )
-
-type requestUser struct {
-	Username string
-	Email    string
-}
 
 type request struct {
 	params     httprouter.Params
 	rawRequest *http.Request
 	header     http.Header
 	ip         string // Priority: X-Forwarded-For > X-Real-IP -> Remote Addr
-	user       *requestUser
+	user       *auth.UserData
 }
 
 type response struct {

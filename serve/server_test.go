@@ -127,7 +127,7 @@ func TestHandleCORSPreflight(t *testing.T) {
 		}
 
 		resAllowedHeaders := rr.Header().Get("Access-Control-Allow-Headers")
-		if resAllowedHeaders != "Content-Type" {
+		if resAllowedHeaders != "Content-Type,Authorization" {
 			t.Errorf("expected Content-Type header allowed in CORS response, got: %s", resAllowedHeaders)
 		}
 	}
@@ -194,8 +194,9 @@ func TestRoutes(t *testing.T) {
 					r.Header.Add("Authorization", "ok")
 					ma.err = nil
 					ma.user = &auth.UserData{
-						Username: "test user",
-						Email:    "test@gmail.com",
+						Username:   "test user",
+						Email:      "test@gmail.com",
+						IsVerified: true,
 					}
 				},
 			},
@@ -207,8 +208,9 @@ func TestRoutes(t *testing.T) {
 					r.Header.Add("Authorization", "ok")
 					ma.err = nil
 					ma.user = &auth.UserData{
-						Username: "test user",
-						Email:    "test@gmail.com",
+						Username:   "test user",
+						Email:      "test@gmail.com",
+						IsVerified: true,
 					}
 				},
 			},
@@ -220,8 +222,9 @@ func TestRoutes(t *testing.T) {
 					r.Header.Add("Authorization", "ok")
 					ma.err = nil
 					ma.user = &auth.UserData{
-						Username: "test user",
-						Email:    "test@gmail.com",
+						Username:   "test user",
+						Email:      "test@gmail.com",
+						IsVerified: true,
 					}
 					ms.err = data.ErrNotFound
 				},
@@ -234,8 +237,9 @@ func TestRoutes(t *testing.T) {
 					r.Header.Add("Authorization", "ok")
 					ma.err = nil
 					ma.user = &auth.UserData{
-						Username: "test user",
-						Email:    "test@gmail.com",
+						Username:   "test user",
+						Email:      "test@gmail.com",
+						IsVerified: true,
 					}
 				},
 			},

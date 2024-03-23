@@ -17,8 +17,9 @@ var ErrInvalidPassword = errors.New("invalid password")
 var ErrUserExists = errors.New("that user already exists")
 
 type UserData struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
+	Username   string `json:"username"`
+	Email      string `json:"email"`
+	IsVerified bool   `json:"-"`
 }
 
 type Auth interface {

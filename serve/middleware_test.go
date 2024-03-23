@@ -102,7 +102,7 @@ func TestMiddleware(t *testing.T) {
 
 	tests := map[string]map[int]func(req *http.Request, mock *MockAuth){
 		"No header": {
-			http.StatusForbidden: func(req *http.Request, mock *MockAuth) {
+			http.StatusUnauthorized: func(req *http.Request, mock *MockAuth) {
 				req.Header.Set("Authorization", "")
 				mock.err = nil
 			},
@@ -115,7 +115,7 @@ func TestMiddleware(t *testing.T) {
 			},
 		},
 		"Good header, not ok": {
-			http.StatusForbidden: func(req *http.Request, mock *MockAuth) {
+			http.StatusUnauthorized: func(req *http.Request, mock *MockAuth) {
 				req.Header.Set("Authorization", "")
 				mock.err = errors.New("no")
 			},
@@ -125,8 +125,9 @@ func TestMiddleware(t *testing.T) {
 				req.Header.Set("Authorization", "data")
 				mock.err = nil
 				mock.user = &auth.UserData{
-					Username: "beep",
-					Email:    "boop",
+					Username:   "beep",
+					Email:      "boop",
+					IsVerified: true,
 				}
 			},
 		},

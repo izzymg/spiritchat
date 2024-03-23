@@ -44,22 +44,23 @@ func (s *Server) middlewareRequireLogin(next handlerFunc) handlerFunc {
 	return func(ctx context.Context, req *request, res *response) {
 		token := req.header.Get("Authorization")
 		if len(token) < 1 {
-			res.Respond(http.StatusForbidden, nil, "no access token")
+			res.Respond(http.StatusUnauthorized, nil, "no access token")
 			return
 		}
 		user, err := s.auth.GetUserFromToken(ctx, token)
 		if err != nil {
-			res.Respond(http.StatusForbidden, nil, fmt.Sprintf("look up user failure: %s", err))
+			res.Respond(http.StatusUnauthorized, nil, fmt.Sprintf("look up user failure: %s", err))
 			return
 		}
 		if user == nil {
 			res.Respond(http.StatusNotFound, nil, "no user")
 			return
 		}
-		req.user = &requestUser{
-			Username: user.Username,
-			Email:    user.Email,
+		if !user.IsVerified {
+			res.Respond(http.StatusUnauthorized, nil, "please verify your account")
+			return
 		}
+		req.user = user
 		next(ctx, req, res)
 	}
 }
