@@ -28,7 +28,7 @@ type Store interface {
 	WriteCategory(ctx context.Context, categoryTag string, categoryName string) error
 
 	/*
-		RemoveCategory removes all posts under category categoryTag and removes the category.
+		Drops a category.
 		Returns affected rows.
 	*/
 	RemoveCategory(ctx context.Context, categoryTag string) (int64, error)
@@ -212,19 +212,11 @@ func (store *DataStore) WriteCategory(ctx context.Context, categoryTag string, c
 }
 
 func (store *DataStore) RemoveCategory(ctx context.Context, categoryTag string) (int64, error) {
-	var affected int64
-
-	tag, err := store.pgPool.Exec(ctx, "DELETE FROM posts WHERE cat = $1", categoryTag)
+	tag, err := store.pgPool.Exec(ctx, "DELETE FROM cats WHERE tag = $1", categoryTag)
 	if err != nil {
-		return affected, err
+		return tag.RowsAffected(), err
 	}
-	affected = tag.RowsAffected()
-
-	tag, err = store.pgPool.Exec(ctx, "DELETE FROM cats WHERE tag = $1", categoryTag)
-	if err != nil {
-		return affected, err
-	}
-	return affected + tag.RowsAffected(), nil
+	return tag.RowsAffected(), nil
 }
 
 func (store *DataStore) GetThreadCount(ctx context.Context, categoryTag string) (int, error) {

@@ -70,4 +70,18 @@ CREATE OR REPLACE FUNCTION drop_orphans() RETURNS trigger as $drop_orphans$
     END
 $drop_orphans$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER drop_orphans AFTER DELETE ON posts FOR EACH ROW EXECUTE FUNCTION drop_orphans();
+CREATE OR REPLACE TRIGGER drop_orphans
+    AFTER DELETE ON posts
+    FOR EACH ROW EXECUTE FUNCTION drop_orphans();
+
+-- Drop all posts on a category
+CREATE OR REPLACE FUNCTION drop_category_posts() RETURNS TRIGGER as $drop_category_posts$
+    BEGIN
+        DELETE FROM posts WHERE cat = OLD.tag;
+        RETURN OLD;
+    END
+$drop_category_posts$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE TRIGGER drop_category_posts
+    BEFORE DELETE ON cats
+    FOR EACH ROW EXECUTE FUNCTION drop_category_posts();
