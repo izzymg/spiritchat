@@ -123,6 +123,8 @@ func TestHandleCORSPreflight(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		allowedMethods := "GET,POST,DELETE"
+
 		handler := handleCORSPreflight(allowedOrigin)
 		handler.ServeHTTP(rr, req)
 		if rr.Code != http.StatusNoContent {
@@ -135,8 +137,8 @@ func TestHandleCORSPreflight(t *testing.T) {
 		}
 
 		resAllowedMethods := rr.Header().Get("Access-Control-Allow-Methods")
-		if resAllowedMethods != "GET,POST" {
-			t.Errorf("expected allowed methods header for GET,POST, got: %s", resAllowedMethods)
+		if resAllowedMethods != allowedMethods {
+			t.Errorf("expected allowed methods header for %s, got: %s", allowedMethods, resAllowedMethods)
 		}
 
 		resAllowedHeaders := rr.Header().Get("Access-Control-Allow-Headers")
