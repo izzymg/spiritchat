@@ -28,7 +28,7 @@ type Store interface {
 	WriteCategory(ctx context.Context, categoryTag string, categoryName string) error
 
 	/*
-		RemoveCategory removes all posts under category categoryTag and removes the category.
+		Drops a category.
 		Returns affected rows.
 	*/
 	RemoveCategory(ctx context.Context, categoryTag string) (int64, error)
@@ -69,7 +69,23 @@ type Store interface {
 		Optional parent thread can be provided if it's a reply.
 		Should return ErrNotFound if invalid post or category.
 	*/
-	WritePost(ctx context.Context, categoryTag string, parentThreadNumber int, p *UserPost) error
+	WritePost(ctx context.Context, categoryTag string, parentThreadNumber int, subject string, content string, username string, email string, ip string) error
+
+	/*
+		Removes a post at the given category & number.
+		Returns number of rows affected.
+	*/
+	RemovePost(ctx context.Context, categoryTag string, number int) (int, error)
+
+	/*
+		Returns whether the post at the given category & postNum has the given email.
+	*/
+	EmailMatches(ctx context.Context, categoryTag string, postNum int, email string) (bool, error)
+
+	/*
+		Returns all posts that have the given email.
+	*/
+	GetPostsByEmail(ctx context.Context, email string) ([]*Post, error)
 }
 
 var ErrNotFound = errors.New("not found")
@@ -94,6 +110,7 @@ type Post struct {
 	Parent    int       `json:"-"`
 	Subject   string    `json:"subject"`
 	Content   string    `json:"content"`
+	Username  string    `json:"username"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
@@ -196,6 +213,15 @@ func (store *DataStore) RateLimit(identifier string, resource string, ms int) er
 	return err
 }
 
+func (store *DataStore) EmailMatches(ctx context.Context, categoryTag string, postNum int, email string) (bool, error) {
+	var outEmail string
+	err := store.pgPool.QueryRow(ctx, "SELECT email FROM posts WHERE cat = $1 AND num = $2", categoryTag, postNum).Scan(&outEmail)
+	if err != nil {
+		return false, fmt.Errorf("failed to query post email: %w", err)
+	}
+	return outEmail == email, nil
+}
+
 func (store *DataStore) WriteCategory(ctx context.Context, categoryTag string, categoryName string) error {
 	_, err := store.pgPool.Exec(ctx, "INSERT INTO cats (tag, name) VALUES ($1, $2)", categoryTag, categoryName)
 	if err != nil {
@@ -205,19 +231,11 @@ func (store *DataStore) WriteCategory(ctx context.Context, categoryTag string, c
 }
 
 func (store *DataStore) RemoveCategory(ctx context.Context, categoryTag string) (int64, error) {
-	var affected int64
-
-	tag, err := store.pgPool.Exec(ctx, "DELETE FROM posts WHERE cat = $1", categoryTag)
+	tag, err := store.pgPool.Exec(ctx, "DELETE FROM cats WHERE tag = $1", categoryTag)
 	if err != nil {
-		return affected, err
+		return tag.RowsAffected(), err
 	}
-	affected = tag.RowsAffected()
-
-	tag, err = store.pgPool.Exec(ctx, "DELETE FROM cats WHERE tag = $1", categoryTag)
-	if err != nil {
-		return affected, err
-	}
-	return affected + tag.RowsAffected(), nil
+	return tag.RowsAffected(), nil
 }
 
 func (store *DataStore) GetThreadCount(ctx context.Context, categoryTag string) (int, error) {
@@ -258,13 +276,13 @@ func (store *DataStore) GetCategories(ctx context.Context) ([]*Category, error) 
 func (store *DataStore) GetPostByNumber(ctx context.Context, categoryTag string, num int) (*Post, error) {
 	row := store.pgPool.QueryRow(
 		ctx,
-		"SELECT num, cat, content, subject, parent, created_at FROM posts WHERE cat = $1 AND num = $2",
+		"SELECT num, cat, content, subject, parent, username, created_at FROM posts WHERE cat = $1 AND num = $2",
 		categoryTag,
 		num,
 	)
 
 	var p Post
-	err := row.Scan(&p.Num, &p.Cat, &p.Content, &p.Subject, &p.Parent, &p.CreatedAt)
+	err := row.Scan(&p.Num, &p.Cat, &p.Content, &p.Subject, &p.Parent, &p.Username, &p.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -283,7 +301,7 @@ func (store *DataStore) GetThreadView(ctx context.Context, categoryTag string, t
 
 	replyRows, err := store.pgPool.Query(
 		ctx,
-		"select num, cat, content, subject, parent, created_at FROM posts WHERE cat = $1 AND (num = $2 or parent = $2) ORDER BY NUM ASC;",
+		"select num, cat, content, subject, parent, username, created_at FROM posts WHERE cat = $1 AND (num = $2 or parent = $2) ORDER BY NUM ASC;",
 		category.Tag,
 		threadNum,
 	)
@@ -295,7 +313,7 @@ func (store *DataStore) GetThreadView(ctx context.Context, categoryTag string, t
 	var posts []*Post = make([]*Post, 0)
 	for replyRows.Next() {
 		post := &Post{}
-		err := replyRows.Scan(&post.Num, &post.Cat, &post.Content, &post.Subject, &post.Parent, &post.CreatedAt)
+		err := replyRows.Scan(&post.Num, &post.Cat, &post.Content, &post.Subject, &post.Parent, &post.Username, &post.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse thread reply: %w", err)
 		}
@@ -340,7 +358,7 @@ func (store *DataStore) GetCategoryView(ctx context.Context, categoryTag string)
 
 	rows, err := store.pgPool.Query(
 		ctx,
-		"SELECT num, cat, content, subject, created_at FROM posts WHERE cat = $1 AND parent = 0 ORDER BY num ASC",
+		"SELECT num, cat, content, subject, username, created_at FROM posts WHERE cat = $1 AND parent = 0 ORDER BY num ASC",
 		categoryTag,
 	)
 	if err != nil {
@@ -351,7 +369,7 @@ func (store *DataStore) GetCategoryView(ctx context.Context, categoryTag string)
 	var posts []*Post = make([]*Post, 0)
 	for rows.Next() {
 		post := &Post{}
-		err := rows.Scan(&post.Num, &post.Cat, &post.Content, &post.Subject, &post.CreatedAt)
+		err := rows.Scan(&post.Num, &post.Cat, &post.Content, &post.Subject, &post.Username, &post.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse a queried category view: %w", err)
 		}
@@ -363,14 +381,26 @@ func (store *DataStore) GetCategoryView(ctx context.Context, categoryTag string)
 	}, nil
 }
 
-func (store *DataStore) WritePost(ctx context.Context, categoryTag string, parentThreadNumber int, p *UserPost) error {
+func (store *DataStore) WritePost(
+	ctx context.Context,
+	categoryTag string,
+	parentThreadNumber int,
+	subject string,
+	content string,
+	username string,
+	email string,
+	ip string,
+) error {
 	_, err := store.pgPool.Exec(
 		ctx,
-		"CALL write_post($1, $2::int, $3, $4)",
+		"CALL write_post($1, $2::int, $3, $4, $5, $6, $7)",
 		categoryTag,
 		parentThreadNumber,
-		p.Content,
-		p.Subject,
+		content,
+		subject,
+		username,
+		email,
+		ip,
 	)
 
 	// Catch foreign-key violations and return a human-readable message.
@@ -383,6 +413,37 @@ func (store *DataStore) WritePost(ctx context.Context, categoryTag string, paren
 		return fmt.Errorf("failed to execute post write: %w", err)
 	}
 	return nil
+}
+
+func (store *DataStore) RemovePost(ctx context.Context, categoryTag string, number int) (int, error) {
+	res, err := store.pgPool.Exec(ctx, "DELETE FROM posts WHERE cat = $1 AND num = $2", categoryTag, number)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete post: %w", err)
+	}
+	return (int)(res.RowsAffected()), nil
+
+}
+
+func (store *DataStore) GetPostsByEmail(ctx context.Context, email string) ([]*Post, error) {
+	rows, err := store.pgPool.Query(
+		ctx,
+		"SELECT num, cat, content, subject, username, created_at FROM posts WHERE email = $1",
+		email,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get posts by email: %w", err)
+	}
+
+	var posts []*Post = make([]*Post, 0)
+	for rows.Next() {
+		post := &Post{}
+		err := rows.Scan(&post.Num, &post.Cat, &post.Content, &post.Subject, &post.Username, &post.CreatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse a queried category view: %w", err)
+		}
+		posts = append(posts, post)
+	}
+	return posts, nil
 }
 
 func (store *DataStore) Migrate(ctx context.Context, up bool) error {

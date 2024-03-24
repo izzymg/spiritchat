@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"spiritchat/auth"
 	"spiritchat/config"
 	"spiritchat/data"
 	"spiritchat/serve"
@@ -27,7 +28,7 @@ func main() {
 	log.Println("Establishing database connection")
 	store, err := data.NewDatastore(ctx, conf.PGURL, conf.RedisURL, 15)
 	if err != nil {
-		log.Printf("Failed to initalize database: %s", err)
+		log.Fatalf("Failed to initalize database: %+v", err)
 		return
 	}
 	defer store.Cleanup(ctx)
@@ -44,7 +45,13 @@ func main() {
 			log.Fatal(err)
 		}
 	} else {
-		server := serve.NewServer(store, serve.ServerOptions{
+		log.Println("Establishing OAuth API")
+		auth, err := auth.NewOAuth(ctx, conf.AuthConfig)
+		if err != nil {
+			log.Fatalf("Failed to initialize OAuth API: %+v", err)
+			return
+		}
+		server := serve.NewServer(store, auth, serve.ServerOptions{
 			Address:             conf.HTTPAddress,
 			CorsOriginAllow:     conf.CORSAllow,
 			PostCooldownSeconds: conf.PostCooldownSeconds,

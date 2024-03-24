@@ -15,8 +15,6 @@ Frontend (Vue.JS): https://github.com/izzymg/spiritclient
 
 Developed inside vscode devcontainer with Redis & Postgres.
 
-Use `launch.json` to run, and run up/down migration tests
-
 ### Environment variables
 
 `SPIRITCHAT_PG_URL` `SPIRITCHAT_REDIS_URL` `SPIRITCHAT_ADDRESS` `SPIRITCHAT_CORS_ALLOW`
@@ -24,8 +22,4 @@ Use `launch.json` to run, and run up/down migration tests
 
 #### Integration tests
 
-Set the env var `SPIRITTEST_INTEGRATIONS` to run integration tests, and then set:
-
-`SPIRITTEST_PG_URL` `SPIRITTEST_REDIS_URL` `SPIRITTEST_ADDR`
-
-
+Set `SPIRIT_INTEGRATIONS` if you want integration tests.

@@ -2,10 +2,10 @@ package serve
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
+	"spiritchat/auth"
 	"spiritchat/data"
 	"strconv"
 	"time"
@@ -17,14 +17,35 @@ const postFailMessage = "Sorry, an error occurred while saving your post"
 const genericFailMessage = "Sorry, an error occurred while handling your request."
 
 var errBadThreadNumber = errors.New("invalid thread number")
-var errNoPost = errors.New("no post provided")
-var errBadJson = errors.New("bad JSON")
+
+type ReplyParameters struct {
+	categoryTag  string
+	threadNumber int
+}
+
+func (cpp ReplyParameters) isThread() bool {
+	return cpp.threadNumber == 0
+}
+
+// Returns route parameters for a reply to a thread or category
+func getReplyParameters(req *request) (*ReplyParameters, error) {
+	threadNumber, err := strconv.Atoi(req.params.ByName("thread"))
+	if err != nil {
+		return nil, errBadThreadNumber
+	}
+
+	return &ReplyParameters{
+		categoryTag:  req.params.ByName("cat"),
+		threadNumber: threadNumber,
+	}, nil
+}
 
 // Server stub todo
 type Server struct {
 	PostCooldownSeconds int
 	postCooldownMs      int
 	store               data.Store
+	auth                auth.Auth
 	httpServer          http.Server
 }
 
@@ -39,8 +60,8 @@ func (server *Server) Listen(ctx context.Context) error {
 	return server.httpServer.Shutdown(context.Background())
 }
 
-// HandleGetCategories handles a GET request for information on categories.
-func (server *Server) HandleGetCategories(ctx context.Context, req *request, res *response) {
+// handleGetCategories handles a GET request for information on categories.
+func (server *Server) handleGetCategories(ctx context.Context, req *request, res *response) {
 	categories, err := server.store.GetCategories(ctx)
 	if err != nil {
 		res.Respond(
@@ -53,8 +74,8 @@ func (server *Server) HandleGetCategories(ctx context.Context, req *request, res
 	res.Respond(http.StatusOK, categories, "")
 }
 
-// HandleGetCategoryView handles a GET request for information on a single category.
-func (server *Server) HandleGetCategoryView(ctx context.Context, req *request, res *response) {
+// handleGetCategoryView handles a GET request for information on a single category.
+func (server *Server) handleGetCategoryView(ctx context.Context, req *request, res *response) {
 	view, err := server.store.GetCategoryView(ctx, req.params.ByName("cat"))
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
@@ -74,8 +95,8 @@ func (server *Server) HandleGetCategoryView(ctx context.Context, req *request, r
 	res.Respond(http.StatusOK, view, "")
 }
 
-// HandleGetThreadView handles a GET request for information on a thread.
-func (server *Server) HandleGetThreadView(ctx context.Context, req *request, res *response) {
+// handleGetThreadView handles a GET request for information on a thread.
+func (server *Server) handleGetThreadView(ctx context.Context, req *request, res *response) {
 	threadNum, err := strconv.Atoi(req.params.ByName("thread"))
 	if err != nil {
 		res.Respond(http.StatusBadRequest, nil, "Invalid thread number")
@@ -95,63 +116,83 @@ func (server *Server) HandleGetThreadView(ctx context.Context, req *request, res
 	res.Respond(http.StatusOK, threadView, "")
 }
 
-// Data about a post creation request
-type createPostParams struct {
-	categoryTag  string
-	threadNumber int
-}
-
-func (cpp createPostParams) isThread() bool {
-	return cpp.threadNumber == 0
-}
-
-// Gets parameters for a post creation request
-func getCreatePostParams(req *request) (*createPostParams, error) {
-	threadNumber, err := strconv.Atoi(req.params.ByName("thread"))
+// HandleSignUp handles a POST request for a sign up.
+func (server *Server) handleSignUp(ctx context.Context, req *request, res *response) {
+	incSignUp, err := getIncomingSignup(req.rawRequest.Body)
 	if err != nil {
-		return nil, errBadThreadNumber
+		res.Respond(http.StatusBadRequest, nil, err.Error())
+		return
 	}
-
-	return &createPostParams{
-		categoryTag:  req.params.ByName("cat"),
-		threadNumber: threadNumber,
-	}, nil
-}
-
-// Decodes a create post request into an UNSAFE user post
-func decodeCreatePost(req *request) (*data.UnsafeUserPost, error) {
-	unsafePost := &data.UnsafeUserPost{}
-	if req.rawRequest.Body == nil {
-		return nil, errNoPost
-	}
-	err := json.NewDecoder(req.rawRequest.Body).Decode(unsafePost)
-	if err != nil {
-		return nil, errBadJson
-	}
-	return unsafePost, nil
-}
-
-// HandleCreatePost handles a POST request to post a new post.
-func (server *Server) HandleCreatePost(ctx context.Context, req *request, res *response) {
-	params, err := getCreatePostParams(req)
+	err = incSignUp.Sanitize()
 	if err != nil {
 		res.Respond(http.StatusBadRequest, nil, err.Error())
 		return
 	}
 
-	unsafePost, err := decodeCreatePost(req)
+	data, err := server.auth.RequestSignUp(ctx, incSignUp.Username, incSignUp.Email, incSignUp.Password)
+	if err != nil {
+		res.Respond(http.StatusBadRequest, nil, err.Error())
+		return
+	}
+	res.Respond(http.StatusOK, data, "success")
+}
+
+// handleRemovePost handles a DELETE request to remove a post.
+func (server *Server) handleRemovePost(ctx context.Context, req *request, res *response) {
+	params, err := getReplyParameters(req)
 	if err != nil {
 		res.Respond(http.StatusBadRequest, nil, err.Error())
 		return
 	}
 
-	safePost, err := data.SanitizeUnsafe(unsafePost, params.isThread())
+	match, err := server.store.EmailMatches(ctx, params.categoryTag, params.threadNumber, req.user.Email)
+	if err != nil {
+		res.Respond(http.StatusInternalServerError, nil, "internal server error")
+		return
+	}
+	if !match {
+		res.Respond(http.StatusUnauthorized, nil, "you can't delete that post")
+		return
+	}
+	_, err = server.store.RemovePost(ctx, params.categoryTag, params.threadNumber)
+	if err != nil {
+		res.Respond(http.StatusInternalServerError, nil, "internal server error")
+		return
+	}
+	res.Respond(http.StatusOK, nil, "post removed")
+}
+
+// handleCreatePost handles a POST request to post a new post.
+func (server *Server) handleCreatePost(ctx context.Context, req *request, res *response) {
+
+	params, err := getReplyParameters(req)
 	if err != nil {
 		res.Respond(http.StatusBadRequest, nil, err.Error())
 		return
 	}
 
-	err = server.store.WritePost(ctx, params.categoryTag, params.threadNumber, safePost)
+	incomingReply, err := getIncomingReply(req.rawRequest.Body)
+	if err != nil {
+		res.Respond(http.StatusBadRequest, nil, err.Error())
+		return
+	}
+
+	err = incomingReply.Sanitize(params.isThread())
+	if err != nil {
+		res.Respond(http.StatusBadRequest, nil, err.Error())
+		return
+	}
+
+	err = server.store.WritePost(
+		ctx,
+		params.categoryTag,
+		params.threadNumber,
+		incomingReply.Subject,
+		incomingReply.Content,
+		req.user.Username,
+		req.user.Email,
+		req.ip,
+	)
 	if err != nil {
 		if errors.Is(err, data.ErrNotFound) {
 			res.Respond(http.StatusNotFound, nil, err.Error())
@@ -167,11 +208,26 @@ func (server *Server) HandleCreatePost(ctx context.Context, req *request, res *r
 	res.Respond(http.StatusOK, ok{Message: "post submitted"}, "")
 }
 
+// handles fetching the user's posts by their email
+func (server *Server) handleGetUsersPosts(ctx context.Context, req *request, res *response) {
+	posts, err := server.store.GetPostsByEmail(ctx, req.user.Email)
+	if err != nil {
+		res.Respond(http.StatusInternalServerError, nil, "internal server error")
+		return
+	}
+	if len(posts) == 0 {
+		res.Respond(http.StatusNotFound, nil, "no posts made")
+		return
+	}
+
+	res.Respond(http.StatusOK, posts, "")
+}
+
 type ConfigResponse struct {
 	Cooldown int `json:"cooldown"`
 }
 
-func (server *Server) HandleGetConfig(ctx context.Context, req *request, res *response) {
+func (server *Server) handleGetConfig(ctx context.Context, req *request, res *response) {
 	res.Respond(http.StatusOK, ConfigResponse{
 		Cooldown: server.postCooldownMs,
 	}, "")
@@ -181,41 +237,9 @@ func (server *Server) HandleGetConfig(ctx context.Context, req *request, res *re
 func handleCORSPreflight(allowedOrigin string) http.HandlerFunc {
 	return func(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
-		rw.Header().Set("Access-Control-Allow-Methods", "GET,POST")
-		rw.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		rw.Header().Set("Access-Control-Allow-Methods", "GET,POST,DELETE")
+		rw.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
 		rw.WriteHeader(http.StatusNoContent)
-	}
-}
-
-func (s *Server) middlewareCORS(hand handlerFunc, allowedOrigin string) handlerFunc {
-	return func(ctx context.Context, req *request, res *response) {
-		res.rw.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
-		hand(ctx, req, res)
-	}
-}
-
-func (s *Server) middlewareRateLimit(hand handlerFunc, ms int, resource string) handlerFunc {
-	return func(ctx context.Context, req *request, res *response) {
-		isLimited, err := s.store.IsRateLimited(req.ip, resource)
-		if err != nil {
-			res.Respond(http.StatusInternalServerError, nil, "internal server error")
-			log.Printf("Failed to fetch rate limit info: %s", err)
-			return
-		}
-
-		if isLimited {
-			res.Respond(http.StatusTooManyRequests, nil, "Rate limited")
-			return
-		}
-
-		err = s.store.RateLimit(req.ip, resource, ms)
-		if err != nil {
-			res.Respond(http.StatusInternalServerError, nil, "internal server error")
-			log.Printf("Failed to rate limit: %s", err)
-			return
-		}
-
-		hand(ctx, req, res)
 	}
 }
 
@@ -227,7 +251,7 @@ type ServerOptions struct {
 }
 
 // NewServer stub todo
-func NewServer(store data.Store, opts ServerOptions) *Server {
+func NewServer(store data.Store, auth auth.Auth, opts ServerOptions) *Server {
 
 	server := &Server{
 		store:          store,
@@ -237,6 +261,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 			IdleTimeout:       time.Minute * 10,
 			ReadHeaderTimeout: time.Second * 10,
 		},
+		auth: auth,
 	}
 
 	router := httprouter.New()
@@ -248,7 +273,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 		"/v1/categories",
 		makeHandler(
 			server.middlewareCORS(
-				server.middlewareRateLimit(server.HandleGetCategories, 100, "get-cats"),
+				server.middlewareRateLimit(server.handleGetCategories, 100, "get-cats"),
 				opts.CorsOriginAllow,
 			),
 		),
@@ -257,7 +282,7 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 		"/v1/categories/:cat",
 		makeHandler(
 			server.middlewareCORS(
-				server.middlewareRateLimit(server.HandleGetCategoryView, 100, "get-catview"), opts.CorsOriginAllow,
+				server.middlewareRateLimit(server.handleGetCategoryView, 100, "get-catview"), opts.CorsOriginAllow,
 			),
 		),
 	)
@@ -265,7 +290,19 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 		"/v1/categories/:cat/:thread",
 		makeHandler(
 			server.middlewareCORS(
-				server.middlewareRateLimit(server.HandleCreatePost, server.postCooldownMs, "post-post"),
+				server.middlewareRequireLogin(
+					server.middlewareRateLimit(
+						server.handleCreatePost, server.postCooldownMs, "post-post"),
+				),
+				opts.CorsOriginAllow,
+			),
+		),
+	)
+	router.DELETE(
+		"/v1/categories/:cat/:thread",
+		makeHandler(
+			server.middlewareCORS(
+				server.middlewareRequireLogin(server.handleRemovePost),
 				opts.CorsOriginAllow,
 			),
 		),
@@ -274,16 +311,40 @@ func NewServer(store data.Store, opts ServerOptions) *Server {
 		"/v1/categories/:cat/:thread",
 		makeHandler(
 			server.middlewareCORS(
-				server.middlewareRateLimit(server.HandleGetThreadView, 100, "get-threadview"),
+				server.middlewareRateLimit(server.handleGetThreadView, 100, "get-threadview"),
 				opts.CorsOriginAllow,
 			),
 		),
 	)
+
+	router.POST(
+		"/v1/signup",
+		makeHandler(
+			server.middlewareCORS(
+				server.middlewareRateLimit(server.handleSignUp, 100, "post-signup"),
+				opts.CorsOriginAllow,
+			),
+		),
+	)
+
+	router.GET("/v1/yours",
+		makeHandler(
+			server.middlewareCORS(
+				server.middlewareRequireLogin(
+					server.middlewareRateLimit(
+						server.handleGetUsersPosts, 100, "get-yours",
+					),
+				),
+				opts.CorsOriginAllow,
+			),
+		),
+	)
+
 	router.GET(
 		"/v1/config",
 		makeHandler(
 			server.middlewareCORS(
-				server.HandleGetConfig,
+				server.handleGetConfig,
 				opts.CorsOriginAllow,
 			),
 		),

@@ -55,6 +55,8 @@ func TestIntegrations(t *testing.T) {
 		"Get Post by Number": integration_GetPostByNumber,
 		"Get Thread View":    integration_GetThreadView,
 		"Rate limit IPs":     integration_RateLimit,
+		"Remove Posts":       integration_RemovePost,
+		"Get Posts by Email": integration_GetPostsByEmail,
 	}
 
 	for name, fn := range integrationTests {
@@ -98,7 +100,7 @@ func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *te
 
 		err = createTestCategories(ctx, store, testCategories)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 		defer removeTestCategories(ctx, store, testCategories)
 
@@ -113,28 +115,90 @@ func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *te
 		for tag, replyCount := range tests {
 			// create OPs
 			for i := 0; i < opCount; i++ {
-				err := store.WritePost(ctx, tag, 0, testPost)
+				err := store.WritePost(ctx, tag, 0, testPost.Subject, testPost.Content, "a", "b", "c")
 				if err != nil {
-					t.Fatal(err)
+					t.Error(err)
 				}
 			}
 
 			opNum := opCount - 1
 			// create replies to an op
 			for i := 0; i < replyCount; i++ {
-				err := store.WritePost(ctx, tag, opNum, testPost)
+				err := store.WritePost(ctx, tag, opNum, testPost.Subject, testPost.Content, "a", "b", "c")
 				if err != nil {
-					t.Fatal(err)
+					t.Error(err)
 				}
 			}
 
 			view, err := store.GetThreadView(ctx, tag, opNum)
 			if err != nil {
-				t.Fatal(err)
+				t.Error(err)
 			}
 			if len(view.Posts) != replyCount+1 {
 				t.Errorf("expected %d posts, got: %d", replyCount+1, len(view.Posts))
 			}
+		}
+	}
+}
+
+func integration_RemovePost(ctx context.Context, store *DataStore) func(t *testing.T) {
+	return func(t *testing.T) {
+		testCategories := map[string]string{
+			"beep": "boop",
+			"bonk": "fonk",
+		}
+
+		err := createTestCategories(ctx, store, testCategories)
+		if err != nil {
+			t.Error(err)
+		}
+		defer removeTestCategories(ctx, store, testCategories)
+
+		// write parent
+		err = store.WritePost(ctx, "beep", 0, "subject", "content", "username", "email", "ip")
+		if err != nil {
+			t.Error(err)
+		}
+
+		// write unrelated parent
+		expectSubject := "UNRELATED POST"
+		err = store.WritePost(ctx, "beep", 0, expectSubject, "content", "username", "email", "ip")
+		if err != nil {
+			t.Error(err)
+		}
+
+		// write replies
+		replyCount := 20
+		for i := 0; i < replyCount; i++ {
+			err = store.WritePost(ctx, "beep", 1, "subject", "content", "username", "email", "ip")
+			if err != nil {
+				t.Error(err)
+			}
+		}
+
+		removed, err := store.RemovePost(ctx, "beep", 1)
+		if err != nil {
+			t.Error(err)
+		}
+
+		// 1 post should be removed
+		if removed != 1 {
+			t.Errorf("expected %d removed posts, got %d", 1, removed)
+		}
+
+		// but all the replies should be gone
+		for i := 0; i < replyCount; i++ {
+			post, err := store.GetPostByNumber(ctx, "beep", 1+replyCount)
+			if err != ErrNotFound {
+				t.Errorf("expected no post, got post %+v", post)
+			}
+		}
+		post, err := store.GetPostByNumber(ctx, "beep", 2)
+		if err != nil {
+			t.Errorf("expected unrelated post still there, got %v", err)
+		}
+		if post.Subject != expectSubject {
+			t.Errorf("expected %s content, got %s", expectSubject, post.Content)
 		}
 	}
 }
@@ -154,7 +218,7 @@ func integration_GetPostByNumber(ctx context.Context, store *DataStore) func(t *
 
 		testPost := createTestUserPost()
 		for tag := range testCategories {
-			err = store.WritePost(ctx, tag, 0, testPost)
+			err = store.WritePost(ctx, tag, 0, testPost.Subject, testPost.Content, "a", "b", "c")
 			if err != nil {
 				t.Error(err)
 			}
@@ -235,14 +299,14 @@ func integration_GetCategoryView(ctx context.Context, store *DataStore) func(t *
 
 		// write a thread into the category
 		for i := 0; i < threadCount; i++ {
-			err = store.WritePost(ctx, catName, 0, createTestUserPost())
+			err = store.WritePost(ctx, catName, 0, "beep", "boop", "a", "b", "c")
 			if err != nil {
 				t.Error(err)
 			}
 		}
 
 		// write a reply to that post
-		err = store.WritePost(ctx, catName, 1, createTestUserPost())
+		err = store.WritePost(ctx, catName, 1, "beep", "boop", "a", "b", "c")
 		if err != nil {
 			t.Error(err)
 		}
@@ -260,6 +324,42 @@ func integration_GetCategoryView(ctx context.Context, store *DataStore) func(t *
 		}
 		if view.Category.Tag != catName {
 			t.Errorf("expected category tag %s, got %s: ", catName, view.Category.Tag)
+		}
+	}
+}
+
+func integration_GetPostsByEmail(ctx context.Context, store *DataStore) func(t *testing.T) {
+	return func(t *testing.T) {
+		testCategoryTag := "test-category"
+		testCategories := map[string]string{testCategoryTag: "test"}
+		expectEmail := "coolemail@example.com"
+		expectContent := "beep"
+		createTestCategories(ctx, store, testCategories)
+		defer removeTestCategories(ctx, store, testCategories)
+
+		postCount := 15
+		err := store.WritePost(ctx, testCategoryTag, 0, "subject", "otherContent", "username", "another email", "ip")
+		if err != nil {
+			t.Error(err)
+		}
+
+		for i := 0; i < postCount; i++ {
+			err := store.WritePost(ctx, testCategoryTag, 0, "subject", expectContent, "username", expectEmail, "ip")
+			if err != nil {
+				t.Error(err)
+			}
+		}
+		posts, err := store.GetPostsByEmail(ctx, expectEmail)
+		if err != nil {
+			t.Error(err)
+		}
+		if len(posts) != postCount {
+			t.Errorf("expected %d posts returned, got %d", postCount, len(posts))
+		}
+		for _, post := range posts {
+			if post.Content != expectContent {
+				t.Errorf("got unexpected post content %s", post.Content)
+			}
 		}
 	}
 }
@@ -290,7 +390,7 @@ Test writing valid & invalid posts
 func integration_WritePosts(ctx context.Context, datastore *DataStore) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Run("invalid category", func(t *testing.T) {
-			err := datastore.WritePost(ctx, "invalid-category", 0, createTestUserPost())
+			err := datastore.WritePost(ctx, "invalid-category", 0, "beep", "boop", "a", "b", "c")
 			if err == nil {
 				t.Errorf("expected writepost error, got: %v", err)
 			}
@@ -308,7 +408,7 @@ func integration_WritePosts(ctx context.Context, datastore *DataStore) func(t *t
 			}
 			defer removeTestCategories(ctx, datastore, testCategories)
 
-			err = datastore.WritePost(ctx, name, 0, createTestUserPost())
+			err = datastore.WritePost(ctx, name, 0, "beep", "boop", "a", "b", "c")
 			if err != nil {
 				t.Errorf("expected no error, got: %v", err)
 			}
@@ -320,7 +420,7 @@ func integration_WritePosts(ctx context.Context, datastore *DataStore) func(t *t
 			createTestCategories(ctx, datastore, testCategories)
 			defer removeTestCategories(ctx, datastore, testCategories)
 
-			err := datastore.WritePost(ctx, name, 5, createTestUserPost())
+			err := datastore.WritePost(ctx, name, 5, "beep", "boop", "a", "b", "c")
 			if err == nil || !errors.Is(err, ErrNotFound) {
 				t.Errorf("expected ErrNotFound, got: %v", err)
 			}
@@ -362,7 +462,6 @@ Creates all categories, and then writes n threads to each category concurrently.
 func concurrentThreadWriteTest(ctx context.Context, datastore *DataStore, tests map[string]int) func(t *testing.T) {
 	return func(t *testing.T) {
 		for categoryName, threadCount := range tests {
-			testUserPost := createTestUserPost()
 			threadCount := threadCount
 			categoryName := categoryName
 			t.Run(categoryName, func(t *testing.T) {
@@ -374,7 +473,7 @@ func concurrentThreadWriteTest(ctx context.Context, datastore *DataStore, tests 
 					wg.Add(1)
 					go func() {
 						defer wg.Done()
-						err := datastore.WritePost(ctx, categoryName, 0, testUserPost)
+						err := datastore.WritePost(ctx, categoryName, 0, "beep", "boop", "a", "b", "c")
 						if err != nil {
 							panic(err)
 						}
@@ -384,7 +483,7 @@ func concurrentThreadWriteTest(ctx context.Context, datastore *DataStore, tests 
 
 				count, err := datastore.GetThreadCount(ctx, categoryName)
 				if err != nil {
-					t.Fatalf("failed to get thread count on category %s: %v", categoryName, err)
+					t.Errorf("failed to get thread count on category %s: %v", categoryName, err)
 				}
 				if count != threadCount {
 					t.Errorf("expected %d threads, got %d", threadCount, count)

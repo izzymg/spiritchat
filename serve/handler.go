@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"spiritchat/auth"
 
 	"github.com/julienschmidt/httprouter"
 )
@@ -16,6 +17,7 @@ type request struct {
 	rawRequest *http.Request
 	header     http.Header
 	ip         string // Priority: X-Forwarded-For > X-Real-IP -> Remote Addr
+	user       *auth.UserData
 }
 
 type response struct {
