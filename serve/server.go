@@ -42,11 +42,9 @@ func getReplyParameters(req *request) (*ReplyParameters, error) {
 
 // Server stub todo
 type Server struct {
-	PostCooldownSeconds int
-	postCooldownMs      int
-	store               data.Store
-	auth                auth.Auth
-	httpServer          http.Server
+	store      data.Store
+	auth       auth.Auth
+	httpServer http.Server
 }
 
 func (server *Server) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -224,13 +222,10 @@ func (server *Server) handleGetUsersPosts(ctx context.Context, req *request, res
 }
 
 type ConfigResponse struct {
-	Cooldown int `json:"cooldown"`
 }
 
 func (server *Server) handleGetConfig(ctx context.Context, req *request, res *response) {
-	res.Respond(http.StatusOK, ConfigResponse{
-		Cooldown: server.postCooldownMs,
-	}, "")
+	res.Respond(http.StatusOK, ConfigResponse{}, "")
 }
 
 // Handle handleCORSPreflight pre-flighting
@@ -254,8 +249,7 @@ type ServerOptions struct {
 func NewServer(store data.Store, auth auth.Auth, opts ServerOptions) *Server {
 
 	server := &Server{
-		store:          store,
-		postCooldownMs: opts.PostCooldownSeconds * 1000,
+		store: store,
 		httpServer: http.Server{
 			Addr:              opts.Address,
 			IdleTimeout:       time.Minute * 10,

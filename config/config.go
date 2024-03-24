@@ -2,20 +2,7 @@ package config
 
 import (
 	"os"
-	"strconv"
 )
-
-func getPostCooldownEnv(env string) int {
-	env, found := os.LookupEnv(env)
-	if !found {
-		return 0
-	}
-	cooldown, err := strconv.ParseInt(env, 10, 64)
-	if err != nil {
-		return 0
-	}
-	return int(cooldown)
-}
 
 /*
 GetIntegrationsConfig is a testing function,
@@ -47,22 +34,20 @@ func parseAuthEnv() SpiritAuthConfig {
 
 // SpiritConfig stores configuration for the app.
 type SpiritConfig struct {
-	HTTPAddress         string
-	CORSAllow           string
-	PGURL               string
-	PostCooldownSeconds int
-	AuthConfig          SpiritAuthConfig
+	HTTPAddress string
+	CORSAllow   string
+	PGURL       string
+	AuthConfig  SpiritAuthConfig
 }
 
 // ParseEnv parses system environment variables, returning app configuration.
 func ParseEnv() *SpiritConfig {
 
 	conf := &SpiritConfig{
-		HTTPAddress:         "0.0.0.0:3000",
-		CORSAllow:           "https://example.com",
-		PGURL:               os.Getenv("SPIRITCHAT_PG_URL"),
-		PostCooldownSeconds: getPostCooldownEnv("SPIRITCHAT_COOLDOWN"),
-		AuthConfig:          parseAuthEnv(),
+		HTTPAddress: "0.0.0.0:3000",
+		CORSAllow:   "https://example.com",
+		PGURL:       os.Getenv("SPIRITCHAT_PG_URL"),
+		AuthConfig:  parseAuthEnv(),
 	}
 	if addr, ok := os.LookupEnv("SPIRITCHAT_ADDRESS"); ok {
 		conf.HTTPAddress = addr
