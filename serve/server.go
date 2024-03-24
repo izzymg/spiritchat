@@ -18,6 +18,28 @@ const genericFailMessage = "Sorry, an error occurred while handling your request
 
 var errBadThreadNumber = errors.New("invalid thread number")
 
+type ReplyParameters struct {
+	categoryTag  string
+	threadNumber int
+}
+
+func (cpp ReplyParameters) isThread() bool {
+	return cpp.threadNumber == 0
+}
+
+// Returns route parameters for a reply to a thread or category
+func getReplyParameters(req *request) (*ReplyParameters, error) {
+	threadNumber, err := strconv.Atoi(req.params.ByName("thread"))
+	if err != nil {
+		return nil, errBadThreadNumber
+	}
+
+	return &ReplyParameters{
+		categoryTag:  req.params.ByName("cat"),
+		threadNumber: threadNumber,
+	}, nil
+}
+
 // Server stub todo
 type Server struct {
 	PostCooldownSeconds int
@@ -115,33 +137,20 @@ func (server *Server) handleSignUp(ctx context.Context, req *request, res *respo
 	res.Respond(http.StatusOK, data, "success")
 }
 
-// Data about a post creation request
-type createPostParams struct {
-	categoryTag  string
-	threadNumber int
-}
-
-func (cpp createPostParams) isThread() bool {
-	return cpp.threadNumber == 0
-}
-
-// Gets parameters for a post creation request
-func getIncomingReplyParams(req *request) (*createPostParams, error) {
-	threadNumber, err := strconv.Atoi(req.params.ByName("thread"))
+// handleRemovePost handles a DELETE request to remove a post.
+func (server *Server) handleRemovePost(ctx context.Context, req *request, res *response) {
+	_, err := getReplyParameters(req)
 	if err != nil {
-		return nil, errBadThreadNumber
+		res.Respond(http.StatusBadRequest, nil, err.Error())
+		return
 	}
 
-	return &createPostParams{
-		categoryTag:  req.params.ByName("cat"),
-		threadNumber: threadNumber,
-	}, nil
 }
 
 // handleCreatePost handles a POST request to post a new post.
 func (server *Server) handleCreatePost(ctx context.Context, req *request, res *response) {
 
-	params, err := getIncomingReplyParams(req)
+	params, err := getReplyParameters(req)
 	if err != nil {
 		res.Respond(http.StatusBadRequest, nil, err.Error())
 		return

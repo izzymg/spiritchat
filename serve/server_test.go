@@ -68,6 +68,10 @@ func (ms *MockStore) WritePost(ctx context.Context, catName string, parentThread
 	return ms.err
 }
 
+func (ms *MockStore) RemovePost(ctx context.Context, categoryTag string, number int) (int, error) {
+	return 0, ms.err
+}
+
 type MockAuth struct {
 	err  error
 	user *auth.UserData

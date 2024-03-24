@@ -70,6 +70,12 @@ type Store interface {
 		Should return ErrNotFound if invalid post or category.
 	*/
 	WritePost(ctx context.Context, categoryTag string, parentThreadNumber int, subject string, content string, username string, email string, ip string) error
+
+	/*
+		Removes a post at the given category & number.
+		Returns number of rows affected.
+	*/
+	RemovePost(ctx context.Context, categoryTag string, number int) (int, error)
 }
 
 var ErrNotFound = errors.New("not found")
@@ -396,6 +402,15 @@ func (store *DataStore) WritePost(
 		return fmt.Errorf("failed to execute post write: %w", err)
 	}
 	return nil
+}
+
+func (store *DataStore) RemovePost(ctx context.Context, categoryTag string, number int) (int, error) {
+	res, err := store.pgPool.Exec(ctx, "DELETE FROM posts WHERE cat = $1 AND num = $2", categoryTag, number)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete post: %w", err)
+	}
+	return (int)(res.RowsAffected()), nil
+
 }
 
 func (store *DataStore) Migrate(ctx context.Context, up bool) error {

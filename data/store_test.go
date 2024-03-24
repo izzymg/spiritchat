@@ -49,12 +49,13 @@ func TestIntegrations(t *testing.T) {
 	defer store.Cleanup(ctx)
 
 	integrationTests := map[string]func(context.Context, *DataStore) func(t *testing.T){
-		"Post writes":        integration_WritePosts,
-		"Get Category View":  integration_GetCategoryView,
-		"Get Categories":     integration_GetCategories,
-		"Get Post by Number": integration_GetPostByNumber,
-		"Get Thread View":    integration_GetThreadView,
-		"Rate limit IPs":     integration_RateLimit,
+		"Post writes":            integration_WritePosts,
+		"Get Category View":      integration_GetCategoryView,
+		"Get Categories":         integration_GetCategories,
+		"Get Post by Number":     integration_GetPostByNumber,
+		"Get Thread View":        integration_GetThreadView,
+		"Rate limit IPs":         integration_RateLimit,
+		"integration_RemovePost": integration_RemovePost,
 	}
 
 	for name, fn := range integrationTests {
@@ -135,6 +136,68 @@ func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *te
 			if len(view.Posts) != replyCount+1 {
 				t.Errorf("expected %d posts, got: %d", replyCount+1, len(view.Posts))
 			}
+		}
+	}
+}
+
+func integration_RemovePost(ctx context.Context, store *DataStore) func(t *testing.T) {
+	return func(t *testing.T) {
+		testCategories := map[string]string{
+			"beep": "boop",
+			"bonk": "fonk",
+		}
+
+		err := createTestCategories(ctx, store, testCategories)
+		if err != nil {
+			t.Error(err)
+		}
+		defer removeTestCategories(ctx, store, testCategories)
+
+		// write parent
+		err = store.WritePost(ctx, "beep", 0, "subject", "content", "username", "email", "ip")
+		if err != nil {
+			t.Error(err)
+		}
+
+		// write unrelated parent
+		expectSubject := "UNRELATED POST"
+		err = store.WritePost(ctx, "beep", 0, expectSubject, "content", "username", "email", "ip")
+		if err != nil {
+			t.Error(err)
+		}
+
+		// write replies
+		replyCount := 20
+		for i := 0; i < replyCount; i++ {
+			err = store.WritePost(ctx, "beep", 1, "subject", "content", "username", "email", "ip")
+			if err != nil {
+				t.Error(err)
+			}
+		}
+
+		removed, err := store.RemovePost(ctx, "beep", 1)
+		if err != nil {
+			t.Error(err)
+		}
+
+		// 1 post should be removed
+		if removed != 1 {
+			t.Errorf("expected %d removed posts, got %d", 1, removed)
+		}
+
+		// but all the replies should be gone
+		for i := 0; i < replyCount; i++ {
+			post, err := store.GetPostByNumber(ctx, "beep", 1+replyCount)
+			if err != ErrNotFound {
+				t.Errorf("expected no post, got post %+v", post)
+			}
+		}
+		post, err := store.GetPostByNumber(ctx, "beep", 2)
+		if err != nil {
+			t.Errorf("expected unrelated post still there, got %v", err)
+		}
+		if post.Subject != expectSubject {
+			t.Errorf("expected %s content, got %s", expectSubject, post.Content)
 		}
 	}
 }
