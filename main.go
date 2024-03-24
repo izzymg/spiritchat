@@ -26,7 +26,7 @@ func main() {
 	defer cancel()
 
 	log.Println("Establishing database connection")
-	store, err := data.NewDatastore(ctx, conf.PGURL, conf.RedisURL, 15)
+	store, err := data.NewDatastore(ctx, conf.PGURL, 15)
 	if err != nil {
 		log.Fatalf("Failed to initalize database: %+v", err)
 		return

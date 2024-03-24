@@ -12,7 +12,6 @@ import (
 )
 
 type MockStore struct {
-	isRateLimited   bool
 	err             error
 	getThreadView   *data.ThreadView
 	getCategories   []*data.Category
@@ -22,14 +21,6 @@ type MockStore struct {
 
 func (ms *MockStore) Cleanup(ctx context.Context) error {
 	panic("not implemented") // TODO: Implement
-}
-
-func (ms *MockStore) IsRateLimited(identifier string, resource string) (bool, error) {
-	return ms.isRateLimited, nil
-}
-
-func (ms *MockStore) RateLimit(identifier string, resource string, _ int) error {
-	return nil
 }
 
 func (ms *MockStore) WriteCategory(ctx context.Context, tag string, name string) error {

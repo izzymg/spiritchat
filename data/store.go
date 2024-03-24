@@ -8,7 +8,6 @@ import (
 	"path"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
 	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -17,12 +16,6 @@ import (
 type Store interface {
 	// Cleanup cleans the underlying connection to the data store.
 	Cleanup(ctx context.Context) error
-
-	// IsRateLimited returns true if the given IP is being rate limited.
-	IsRateLimited(identifier string, resource string) (bool, error)
-
-	// RateLimit marks IP & Resource as rate limited for n ms.
-	RateLimit(identifier string, resource string, ms int) error
 
 	// WriteCategory adds a new category to the database.
 	WriteCategory(ctx context.Context, categoryTag string, categoryName string) error
@@ -141,21 +134,7 @@ type ThreadView struct {
 }
 
 // NewDatastore creates a new data store, creating a connection.
-func NewDatastore(ctx context.Context, pgURL string, redisURL string, maxConns int32) (*DataStore, error) {
-	redisPool := &redis.Pool{
-		MaxActive: int(maxConns),
-		MaxIdle:   int(maxConns),
-		Wait:      true,
-		Dial: func() (redis.Conn, error) {
-			redisConn, err := redis.DialURL(redisURL)
-			if err != nil {
-				return nil, fmt.Errorf("redis connection failed: %w", err)
-			}
-			return redisConn, nil
-		},
-		IdleTimeout: 200 * time.Second,
-	}
-
+func NewDatastore(ctx context.Context, pgURL string, maxConns int32) (*DataStore, error) {
 	conf, err := pgxpool.ParseConfig(pgURL)
 	if err != nil {
 		return nil, fmt.Errorf("pg config parsing failed: %w", err)
@@ -168,49 +147,17 @@ func NewDatastore(ctx context.Context, pgURL string, redisURL string, maxConns i
 		return nil, fmt.Errorf("pg connection failed: %w", err)
 	}
 	return &DataStore{
-		pgPool:    pgPool,
-		redisPool: redisPool,
+		pgPool: pgPool,
 	}, nil
 }
 
 type DataStore struct {
-	pgPool    *pgxpool.Pool
-	redisPool *redis.Pool
+	pgPool *pgxpool.Pool
 }
 
 func (store *DataStore) Cleanup(ctx context.Context) error {
 	store.pgPool.Close()
-	return store.redisPool.Close()
-}
-
-func (store *DataStore) IsRateLimited(identifier string, resource string) (bool, error) {
-	conn := store.redisPool.Get()
-	defer conn.Close()
-
-	key := getRateLimitResourceID(identifier, resource)
-
-	exists, err := redis.Bool(conn.Do(
-		"EXISTS", key,
-	))
-	if err != nil {
-		return false, fmt.Errorf("failed to look up ip rate limit: %w", err)
-	}
-	return exists, nil
-}
-
-func (store *DataStore) RateLimit(identifier string, resource string, ms int) error {
-	key := getRateLimitResourceID(identifier, resource)
-	if ms < 1 {
-		return nil
-	}
-	conn := store.redisPool.Get()
-	defer conn.Close()
-	_, err := conn.Do("SET", key, ms)
-	if err != nil {
-		return err
-	}
-	_, err = conn.Do("PEXPIRE", key, ms)
-	return err
+	return nil
 }
 
 func (store *DataStore) EmailMatches(ctx context.Context, categoryTag string, postNum int, email string) (bool, error) {

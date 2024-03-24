@@ -3,7 +3,6 @@ package serve
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 )
 
@@ -11,31 +10,6 @@ func (s *Server) middlewareCORS(next handlerFunc, allowedOrigin string) handlerF
 	return func(ctx context.Context, req *request, res *response) {
 		res.rw.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
 		res.rw.Header().Set("Access-Control-Allow-Headers", "Authorization")
-		next(ctx, req, res)
-	}
-}
-
-func (s *Server) middlewareRateLimit(next handlerFunc, ms int, resource string) handlerFunc {
-	return func(ctx context.Context, req *request, res *response) {
-		isLimited, err := s.store.IsRateLimited(req.ip, resource)
-		if err != nil {
-			res.Respond(http.StatusInternalServerError, nil, "internal server error")
-			log.Printf("Failed to fetch rate limit info: %s", err)
-			return
-		}
-
-		if isLimited {
-			res.Respond(http.StatusTooManyRequests, nil, "Rate limited")
-			return
-		}
-
-		err = s.store.RateLimit(req.ip, resource, ms)
-		if err != nil {
-			res.Respond(http.StatusInternalServerError, nil, "internal server error")
-			log.Printf("Failed to rate limit: %s", err)
-			return
-		}
-
 		next(ctx, req, res)
 	}
 }

@@ -273,7 +273,7 @@ func NewServer(store data.Store, auth auth.Auth, opts ServerOptions) *Server {
 		"/v1/categories",
 		makeHandler(
 			server.middlewareCORS(
-				server.middlewareRateLimit(server.handleGetCategories, 100, "get-cats"),
+				server.handleGetCategories,
 				opts.CorsOriginAllow,
 			),
 		),
@@ -282,7 +282,7 @@ func NewServer(store data.Store, auth auth.Auth, opts ServerOptions) *Server {
 		"/v1/categories/:cat",
 		makeHandler(
 			server.middlewareCORS(
-				server.middlewareRateLimit(server.handleGetCategoryView, 100, "get-catview"), opts.CorsOriginAllow,
+				server.handleGetCategoryView, opts.CorsOriginAllow,
 			),
 		),
 	)
@@ -291,9 +291,7 @@ func NewServer(store data.Store, auth auth.Auth, opts ServerOptions) *Server {
 		makeHandler(
 			server.middlewareCORS(
 				server.middlewareRequireLogin(
-					server.middlewareRateLimit(
-						server.handleCreatePost, server.postCooldownMs, "post-post"),
-				),
+					server.handleCreatePost),
 				opts.CorsOriginAllow,
 			),
 		),
@@ -311,7 +309,7 @@ func NewServer(store data.Store, auth auth.Auth, opts ServerOptions) *Server {
 		"/v1/categories/:cat/:thread",
 		makeHandler(
 			server.middlewareCORS(
-				server.middlewareRateLimit(server.handleGetThreadView, 100, "get-threadview"),
+				server.handleGetThreadView,
 				opts.CorsOriginAllow,
 			),
 		),
@@ -321,7 +319,7 @@ func NewServer(store data.Store, auth auth.Auth, opts ServerOptions) *Server {
 		"/v1/signup",
 		makeHandler(
 			server.middlewareCORS(
-				server.middlewareRateLimit(server.handleSignUp, 100, "post-signup"),
+				server.handleSignUp,
 				opts.CorsOriginAllow,
 			),
 		),
@@ -331,9 +329,7 @@ func NewServer(store data.Store, auth auth.Auth, opts ServerOptions) *Server {
 		makeHandler(
 			server.middlewareCORS(
 				server.middlewareRequireLogin(
-					server.middlewareRateLimit(
-						server.handleGetUsersPosts, 100, "get-yours",
-					),
+					server.handleGetUsersPosts,
 				),
 				opts.CorsOriginAllow,
 			),

@@ -13,11 +13,11 @@ Frontend (Vue.JS): https://github.com/izzymg/spiritclient
 
 ### devcontainer
 
-Developed inside vscode devcontainer with Redis & Postgres.
+Developed inside vscode devcontainer with Postgres.
 
 ### Environment variables
 
-`SPIRITCHAT_PG_URL` `SPIRITCHAT_REDIS_URL` `SPIRITCHAT_ADDRESS` `SPIRITCHAT_CORS_ALLOW`
+`SPIRITCHAT_PG_URL` `SPIRITCHAT_ADDRESS` `SPIRITCHAT_CORS_ALLOW`
 
 
 #### Integration tests

@@ -6,7 +6,6 @@ import (
 	"spiritchat/config"
 	"sync"
 	"testing"
-	"time"
 )
 
 // Should return true if a post is a reply in the DB.
@@ -54,7 +53,6 @@ func TestIntegrations(t *testing.T) {
 		"Get Categories":     integration_GetCategories,
 		"Get Post by Number": integration_GetPostByNumber,
 		"Get Thread View":    integration_GetThreadView,
-		"Rate limit IPs":     integration_RateLimit,
 		"Remove Posts":       integration_RemovePost,
 		"Get Posts by Email": integration_GetPostsByEmail,
 	}
@@ -77,7 +75,7 @@ func getIntegrationTestSetup() (bool, *DataStore, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	store, err := NewDatastore(ctx, conf.PGURL, conf.RedisURL, 100)
+	store, err := NewDatastore(ctx, conf.PGURL, 100)
 	if err != nil {
 		return true, nil, err
 	}
@@ -489,50 +487,6 @@ func concurrentThreadWriteTest(ctx context.Context, datastore *DataStore, tests 
 					t.Errorf("expected %d threads, got %d", threadCount, count)
 				}
 			})
-		}
-	}
-}
-
-func integration_RateLimit(ctx context.Context, store *DataStore) func(t *testing.T) {
-	return func(t *testing.T) {
-
-		tests := map[string]string{
-			"13.3.4":         "write a post",
-			"100.3r45.5434z": "beep",
-			"localhost":      "0001010",
-			"127.0.0.1":      "somce resource",
-			"hiiii":          "somce resource",
-		}
-		limited, err := store.IsRateLimited("garbage_ip", "ttt")
-		if err != nil {
-			t.Error(err)
-		}
-		if limited {
-			t.Error("Expected no rate limit on garbage IP")
-		}
-
-		timeMs := 555
-		for ip, resource := range tests {
-			store.RateLimit(ip, resource, timeMs)
-			limited, err = store.IsRateLimited(ip, resource)
-			if err != nil {
-				t.Error(err)
-			}
-			if !limited {
-				t.Error("Expected rate limit after limiting")
-			}
-		}
-
-		<-time.After(time.Duration(timeMs+50) * time.Millisecond)
-
-		for ip, resource := range tests {
-			limited, err = store.IsRateLimited(ip, resource)
-			if err != nil {
-				t.Error(err)
-			}
-			if limited {
-				t.Error("Expected rate limit to expire")
-			}
 		}
 	}
 }

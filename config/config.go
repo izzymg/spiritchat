@@ -50,7 +50,6 @@ type SpiritConfig struct {
 	HTTPAddress         string
 	CORSAllow           string
 	PGURL               string
-	RedisURL            string
 	PostCooldownSeconds int
 	AuthConfig          SpiritAuthConfig
 }
@@ -62,7 +61,6 @@ func ParseEnv() *SpiritConfig {
 		HTTPAddress:         "0.0.0.0:3000",
 		CORSAllow:           "https://example.com",
 		PGURL:               os.Getenv("SPIRITCHAT_PG_URL"),
-		RedisURL:            os.Getenv("SPIRITCHAT_REDIS_URL"),
 		PostCooldownSeconds: getPostCooldownEnv("SPIRITCHAT_COOLDOWN"),
 		AuthConfig:          parseAuthEnv(),
 	}
