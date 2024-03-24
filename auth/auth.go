@@ -74,8 +74,9 @@ func (a *OAuth) GetUserFromToken(ctx context.Context, token string) (*UserData, 
 		return nil, err
 	}
 	return &UserData{
-		Username: info.PreferredUsername,
-		Email:    info.Email,
+		Username:   info.PreferredUsername,
+		Email:      info.Email,
+		IsVerified: info.EmailVerified,
 	}, nil
 }
 
