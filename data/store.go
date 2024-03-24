@@ -76,6 +76,16 @@ type Store interface {
 		Returns number of rows affected.
 	*/
 	RemovePost(ctx context.Context, categoryTag string, number int) (int, error)
+
+	/*
+		Returns whether the post at the given category & postNum has the given email.
+	*/
+	EmailMatches(ctx context.Context, categoryTag string, postNum int, email string) (bool, error)
+
+	/*
+		Returns all posts that have the given email.
+	*/
+	GetPostsByEmail(ctx context.Context, email string) ([]*Post, error)
 }
 
 var ErrNotFound = errors.New("not found")
@@ -201,6 +211,15 @@ func (store *DataStore) RateLimit(identifier string, resource string, ms int) er
 	}
 	_, err = conn.Do("PEXPIRE", key, ms)
 	return err
+}
+
+func (store *DataStore) EmailMatches(ctx context.Context, categoryTag string, postNum int, email string) (bool, error) {
+	var outEmail string
+	err := store.pgPool.QueryRow(ctx, "SELECT email FROM posts WHERE cat = $1 AND num = $2", categoryTag, postNum).Scan(&outEmail)
+	if err != nil {
+		return false, fmt.Errorf("failed to query post email: %w", err)
+	}
+	return outEmail == email, nil
 }
 
 func (store *DataStore) WriteCategory(ctx context.Context, categoryTag string, categoryName string) error {
@@ -403,6 +422,28 @@ func (store *DataStore) RemovePost(ctx context.Context, categoryTag string, numb
 	}
 	return (int)(res.RowsAffected()), nil
 
+}
+
+func (store *DataStore) GetPostsByEmail(ctx context.Context, email string) ([]*Post, error) {
+	rows, err := store.pgPool.Query(
+		ctx,
+		"SELECT num, cat, content, subject, username, created_at FROM posts WHERE email = $1",
+		email,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get posts by email: %w", err)
+	}
+
+	var posts []*Post = make([]*Post, 0)
+	for rows.Next() {
+		post := &Post{}
+		err := rows.Scan(&post.Num, &post.Cat, &post.Content, &post.Subject, &post.Username, &post.CreatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse a queried category view: %w", err)
+		}
+		posts = append(posts, post)
+	}
+	return posts, nil
 }
 
 func (store *DataStore) Migrate(ctx context.Context, up bool) error {

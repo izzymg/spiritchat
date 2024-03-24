@@ -49,13 +49,14 @@ func TestIntegrations(t *testing.T) {
 	defer store.Cleanup(ctx)
 
 	integrationTests := map[string]func(context.Context, *DataStore) func(t *testing.T){
-		"Post writes":            integration_WritePosts,
-		"Get Category View":      integration_GetCategoryView,
-		"Get Categories":         integration_GetCategories,
-		"Get Post by Number":     integration_GetPostByNumber,
-		"Get Thread View":        integration_GetThreadView,
-		"Rate limit IPs":         integration_RateLimit,
-		"integration_RemovePost": integration_RemovePost,
+		"Post writes":        integration_WritePosts,
+		"Get Category View":  integration_GetCategoryView,
+		"Get Categories":     integration_GetCategories,
+		"Get Post by Number": integration_GetPostByNumber,
+		"Get Thread View":    integration_GetThreadView,
+		"Rate limit IPs":     integration_RateLimit,
+		"Remove Posts":       integration_RemovePost,
+		"Get Posts by Email": integration_GetPostsByEmail,
 	}
 
 	for name, fn := range integrationTests {
@@ -323,6 +324,42 @@ func integration_GetCategoryView(ctx context.Context, store *DataStore) func(t *
 		}
 		if view.Category.Tag != catName {
 			t.Errorf("expected category tag %s, got %s: ", catName, view.Category.Tag)
+		}
+	}
+}
+
+func integration_GetPostsByEmail(ctx context.Context, store *DataStore) func(t *testing.T) {
+	return func(t *testing.T) {
+		testCategoryTag := "test-category"
+		testCategories := map[string]string{testCategoryTag: "test"}
+		expectEmail := "coolemail@example.com"
+		expectContent := "beep"
+		createTestCategories(ctx, store, testCategories)
+		defer removeTestCategories(ctx, store, testCategories)
+
+		postCount := 15
+		err := store.WritePost(ctx, testCategoryTag, 0, "subject", "otherContent", "username", "another email", "ip")
+		if err != nil {
+			t.Error(err)
+		}
+
+		for i := 0; i < postCount; i++ {
+			err := store.WritePost(ctx, testCategoryTag, 0, "subject", expectContent, "username", expectEmail, "ip")
+			if err != nil {
+				t.Error(err)
+			}
+		}
+		posts, err := store.GetPostsByEmail(ctx, expectEmail)
+		if err != nil {
+			t.Error(err)
+		}
+		if len(posts) != postCount {
+			t.Errorf("expected %d posts returned, got %d", postCount, len(posts))
+		}
+		for _, post := range posts {
+			if post.Content != expectContent {
+				t.Errorf("got unexpected post content %s", post.Content)
+			}
 		}
 	}
 }

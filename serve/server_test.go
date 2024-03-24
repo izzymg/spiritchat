@@ -72,6 +72,15 @@ func (ms *MockStore) RemovePost(ctx context.Context, categoryTag string, number 
 	return 0, ms.err
 }
 
+func (ms *MockStore) EmailMatches(ctx context.Context, categoryTag string, postNumber int, email string) (bool, error) {
+	return true, ms.err
+}
+
+func (ms *MockStore) GetPostsByEmail(ctx context.Context, email string) ([]*data.Post, error) {
+	var d []*data.Post
+	return d, ms.err
+}
+
 type MockAuth struct {
 	err  error
 	user *auth.UserData

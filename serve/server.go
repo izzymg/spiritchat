@@ -139,12 +139,27 @@ func (server *Server) handleSignUp(ctx context.Context, req *request, res *respo
 
 // handleRemovePost handles a DELETE request to remove a post.
 func (server *Server) handleRemovePost(ctx context.Context, req *request, res *response) {
-	_, err := getReplyParameters(req)
+	params, err := getReplyParameters(req)
 	if err != nil {
 		res.Respond(http.StatusBadRequest, nil, err.Error())
 		return
 	}
 
+	match, err := server.store.EmailMatches(ctx, params.categoryTag, params.threadNumber, req.user.Email)
+	if err != nil {
+		res.Respond(http.StatusInternalServerError, nil, "internal server error")
+		return
+	}
+	if !match {
+		res.Respond(http.StatusUnauthorized, nil, "you can't delete that post")
+		return
+	}
+	_, err = server.store.RemovePost(ctx, params.categoryTag, params.threadNumber)
+	if err != nil {
+		res.Respond(http.StatusInternalServerError, nil, "internal server error")
+		return
+	}
+	res.Respond(http.StatusOK, nil, "post removed")
 }
 
 // handleCreatePost handles a POST request to post a new post.
@@ -193,6 +208,21 @@ func (server *Server) handleCreatePost(ctx context.Context, req *request, res *r
 	res.Respond(http.StatusOK, ok{Message: "post submitted"}, "")
 }
 
+// handles fetching the user's posts by their email
+func (server *Server) handleGetUsersPosts(ctx context.Context, req *request, res *response) {
+	posts, err := server.store.GetPostsByEmail(ctx, req.user.Email)
+	if err != nil {
+		res.Respond(http.StatusInternalServerError, nil, "internal server error")
+		return
+	}
+	if len(posts) == 0 {
+		res.Respond(http.StatusNotFound, nil, "no posts made")
+		return
+	}
+
+	res.Respond(http.StatusOK, posts, "")
+}
+
 type ConfigResponse struct {
 	Cooldown int `json:"cooldown"`
 }
@@ -207,7 +237,7 @@ func (server *Server) handleGetConfig(ctx context.Context, req *request, res *re
 func handleCORSPreflight(allowedOrigin string) http.HandlerFunc {
 	return func(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
-		rw.Header().Set("Access-Control-Allow-Methods", "GET,POST")
+		rw.Header().Set("Access-Control-Allow-Methods", "GET,POST,DELETE")
 		rw.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
 		rw.WriteHeader(http.StatusNoContent)
 	}
@@ -268,6 +298,15 @@ func NewServer(store data.Store, auth auth.Auth, opts ServerOptions) *Server {
 			),
 		),
 	)
+	router.DELETE(
+		"/v1/categories/:cat/:thread",
+		makeHandler(
+			server.middlewareCORS(
+				server.middlewareRequireLogin(server.handleRemovePost),
+				opts.CorsOriginAllow,
+			),
+		),
+	)
 	router.GET(
 		"/v1/categories/:cat/:thread",
 		makeHandler(
@@ -277,6 +316,7 @@ func NewServer(store data.Store, auth auth.Auth, opts ServerOptions) *Server {
 			),
 		),
 	)
+
 	router.POST(
 		"/v1/signup",
 		makeHandler(
@@ -286,6 +326,20 @@ func NewServer(store data.Store, auth auth.Auth, opts ServerOptions) *Server {
 			),
 		),
 	)
+
+	router.GET("/v1/yours",
+		makeHandler(
+			server.middlewareCORS(
+				server.middlewareRequireLogin(
+					server.middlewareRateLimit(
+						server.handleGetUsersPosts, 100, "get-yours",
+					),
+				),
+				opts.CorsOriginAllow,
+			),
+		),
+	)
+
 	router.GET(
 		"/v1/config",
 		makeHandler(
