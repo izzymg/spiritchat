@@ -108,12 +108,11 @@ func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *te
 			t.Errorf("expected ErrNotFound, got: %v", err)
 		}
 
-		testPost := createTestUserPost()
 		opCount := 3
 		for tag, replyCount := range tests {
 			// create OPs
 			for i := 0; i < opCount; i++ {
-				err := store.WritePost(ctx, tag, 0, testPost.Subject, testPost.Content, "a", "b", "c")
+				err := store.WritePost(ctx, tag, 0, "abc", "bdef", "a", "b", "c")
 				if err != nil {
 					t.Error(err)
 				}
@@ -122,7 +121,7 @@ func integration_GetThreadView(ctx context.Context, store *DataStore) func(t *te
 			opNum := opCount - 1
 			// create replies to an op
 			for i := 0; i < replyCount; i++ {
-				err := store.WritePost(ctx, tag, opNum, testPost.Subject, testPost.Content, "a", "b", "c")
+				err := store.WritePost(ctx, tag, opNum, "abc", "bdef", "a", "b", "c")
 				if err != nil {
 					t.Error(err)
 				}
@@ -214,9 +213,9 @@ func integration_GetPostByNumber(ctx context.Context, store *DataStore) func(t *
 		}
 		defer removeTestCategories(ctx, store, testCategories)
 
-		testPost := createTestUserPost()
+		expectContent := "beepboop"
 		for tag := range testCategories {
-			err = store.WritePost(ctx, tag, 0, testPost.Subject, testPost.Content, "a", "b", "c")
+			err = store.WritePost(ctx, tag, 0, "hey", expectContent, "a", "b", "c")
 			if err != nil {
 				t.Error(err)
 			}
@@ -225,8 +224,8 @@ func integration_GetPostByNumber(ctx context.Context, store *DataStore) func(t *
 				t.Error(err)
 			}
 
-			if post.Content != testPost.Content {
-				t.Errorf("post content mismatch, expected %s got: %s", testPost.Content, post.Content)
+			if post.Content != expectContent {
+				t.Errorf("post content mismatch, expected %s got: %s", expectContent, post.Content)
 			}
 		}
 
@@ -423,13 +422,6 @@ func integration_WritePosts(ctx context.Context, datastore *DataStore) func(t *t
 				t.Errorf("expected ErrNotFound, got: %v", err)
 			}
 		})
-	}
-}
-
-// Creates an empty test user post.
-func createTestUserPost() *UserPost {
-	return &UserPost{
-		Content: "test",
 	}
 }
 

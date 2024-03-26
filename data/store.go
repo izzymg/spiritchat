@@ -83,11 +83,6 @@ type Store interface {
 
 var ErrNotFound = errors.New("not found")
 
-// Returns a string identifying a resource and a rate limit identifier (IP addr usually)
-func getRateLimitResourceID(identifier string, resource string) string {
-	return fmt.Sprintf("%s-%s", identifier, resource)
-}
-
 // Category contains JSON information describing a Category for posts.
 type Category struct {
 	Tag         string `json:"tag"`
@@ -105,12 +100,6 @@ type Post struct {
 	Content   string    `json:"content"`
 	Username  string    `json:"username"`
 	CreatedAt time.Time `json:"createdAt"`
-}
-
-// UserPost contains JSON information describing an incoming post for writing.
-type UserPost struct {
-	Content string `json:"content"`
-	Subject string `json:"subject"`
 }
 
 // IsReply returns true if this post has a parent.
